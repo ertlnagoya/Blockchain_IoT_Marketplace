@@ -1,0 +1,15 @@
+[submodule "mediator-owner"]
+	path = mediator-owner
+	url = https://github.com/ertlnagoya/mediator.git
+[submodule "mediator-buyer"]
+	path = mediator-buyer
+	url = https://github.com/ertlnagoya/mediator.git
+[submodule "iot-market-ui"]
+	path = iot-market-ui
+	url = https://github.com/ertlnagoya/iot-market-ui.git
+[submodule "iot-market"]
+	path = iot-market
+	url = https://github.com/ertlnagoya/iot-market.git
+[submodule "simple-storage"]
+	path = simple-storage
+	url = https://github.com/ertlnagoya/simple-storage.git
