@@ -1,0 +1,44 @@
+[
+    {
+        "inputs": [],
+        "name": "PubKey__InvalidPubKey",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PubKey__NotRegistered",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "who",
+                "type": "address"
+            }
+        ],
+        "name": "getPubKey",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "string",
+                "name": "pubKey",
+                "type": "string"
+            }
+        ],
+        "name": "registerKey",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]

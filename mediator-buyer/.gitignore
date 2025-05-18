@@ -1,0 +1,6 @@
+/target
+.DS_Store
+/scripts/assets/*
+/downloads/*
+/uploads/*
+!/uploads/.gitkeep
