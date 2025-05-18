@@ -29,7 +29,10 @@ use web3::{
     types::{Address, H160, H256},
 };
 
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{
+    event::{ModifyKind, RenameMode},
+    EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -43,7 +46,7 @@ const PUBKEY_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa
 const IOT_MARKET_CONTRACT_ADDRESS: &str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 const PROCESS_RULE_FILE_PATH: &str = "settings/process_rule.json";
-const RAWDATA_DIR: &str = "raw_data"; // IoT機器からのデータの保存先
+const RAWDATA_DIR: &str = "/workspaces/mediator-owner/raw_data"; // IoT機器からのデータの保存先
 const PROCESSED_DIR: &str = "processed_data"; // 加工データ(流通用データ)の保存先
 const DOWNLOAD_DIR: &str = "downloads"; // ダウンロードしたデータの保存先
 
@@ -103,6 +106,7 @@ async fn main() -> AppResult<()> {
     let watcher_thread = tokio::spawn(async move {
         let rules = rules.clone();
         loop {
+            println!("test");
             if let Some(file_path) = monitor_folder(RAWDATA_DIR).await {
                 println!("新しいファイルが作成されました: {:?}", file_path);
                 // ルールと照合する
@@ -338,12 +342,25 @@ async fn monitor_folder(path: &str) -> Option<PathBuf> {
     watcher
         .watch(Path::new(path), RecursiveMode::NonRecursive)
         .ok()?;
+    println!("monitor_folder {path}");
 
-    rx.iter().flatten().find_map(|event| {
+    let result = rx.iter().flatten().find_map(|event| {
+        println!("event");
+        println!("event.kind: {:?}", event.kind);
         if let EventKind::Create(notify::event::CreateKind::File) = event.kind {
+            println!("created");
+            event.paths.first().cloned()
+        } else if let EventKind::Modify(notify::event::ModifyKind::Name(RenameMode::To)) =
+            event.kind
+        {
+            println!("✏️ ファイル名変更（To）検出!");
             event.paths.first().cloned()
         } else {
+            println!("none");
             None
         }
-    })
+    });
+
+    drop(watcher);
+    result
 }

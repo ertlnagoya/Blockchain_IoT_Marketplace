@@ -2,5 +2,10 @@
 .DS_Store
 /scripts/assets/*
 /downloads/*
+!/downloads/.gitkeep
 /uploads/*
 !/uploads/.gitkeep
+/raw_data/*
+!/raw_data/.gitkeep
+/processed_data/*
+!/processed_data/.gitkeep

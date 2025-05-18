@@ -10,10 +10,12 @@
 			"installTools": true
 		}
 	},
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/mediator-buyer,type=bind",
+	"workspaceFolder": "/workspaces/mediator-buyer",
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "rustc --version",
+	"postCreateCommand": "rustc --version && pip install -r scripts/requirements.txt && sudo apt -y update && sudo apt -y upgrade && sudo apt -y install libopencv-dev",
 	// Configure tool-specific properties.
 	"customizations": {
 		"vscode": {
