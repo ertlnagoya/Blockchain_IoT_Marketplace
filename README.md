@@ -75,6 +75,8 @@ npx hardhat run scripts/deployMerchandiseWithIoTMarket.ts --network localhost
 ```
 
 これによってローカルネットワークに、IoT Marketといくつかのサンプルデータがデプロイされます。
+（注意）コントラクトのデプロイは不安定で、コントラクト名が`Unrecognized Contract`になる失敗がある（DevContainer作成直後は失敗する印象）。  
+デプロイしたコントラクト名が正常に表示されていない場合、`npx hardhat node`からやり直す。
 
 ### 3. Metamaskのセットアップ
 
@@ -170,6 +172,7 @@ code .
 ### 8. 購入手続きを行う
 
 Mediator(owner)で`raw_data`にmp4ファイルを出し入れして、mediatorに新しい動画が来たと認識させてください。  
+（注意）ファイル更新のnotifyはDocker上では不安定であるため、ファイル更新のイベントが検出されない場合はMediator(owner)で`cargo run`しなおしてください（最初の数回は失敗する印象）。
 `localhost:5173`にアクセスし、metamaskでアカウントをbuyerのもの（UUIDが`0x3c`で始まるもの）に切り替えてください。  
 その後、mediator(owner)の実行によってデプロイされた商品を購入してください。  
 正しくセットアップされていれば、buyerはイベントをキャッチしてストレージサーバーから`downloads/`にファイルをダウンロードするはずです。
