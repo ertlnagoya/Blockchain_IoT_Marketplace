@@ -106,7 +106,6 @@ async fn main() -> AppResult<()> {
     let watcher_thread = tokio::spawn(async move {
         let rules = rules.clone();
         loop {
-            println!("test");
             if let Some(file_path) = monitor_folder(RAWDATA_DIR).await {
                 println!("新しいファイルが作成されました: {:?}", file_path);
                 // ルールと照合する
@@ -342,21 +341,17 @@ async fn monitor_folder(path: &str) -> Option<PathBuf> {
     watcher
         .watch(Path::new(path), RecursiveMode::NonRecursive)
         .ok()?;
-    println!("monitor_folder {path}");
+    println!("monitor_folder created watcher. Path:{path}");
 
     let result = rx.iter().flatten().find_map(|event| {
-        println!("event");
-        println!("event.kind: {:?}", event.kind);
+        println!("watcher's event.kind: {:?}", event.kind);
         if let EventKind::Create(notify::event::CreateKind::File) = event.kind {
-            println!("created");
             event.paths.first().cloned()
         } else if let EventKind::Modify(notify::event::ModifyKind::Name(RenameMode::To)) =
             event.kind
         {
-            println!("✏️ ファイル名変更（To）検出!");
             event.paths.first().cloned()
         } else {
-            println!("none");
             None
         }
     });

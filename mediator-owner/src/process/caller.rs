@@ -15,7 +15,6 @@ pub async fn call_processer(
     script: ScriptFile,
 ) -> io::Result<PathBuf> {
     // check existence of the script, video file and output directory
-    println!("in call_processer");
     let file_path = check_script_existance(SCRIPT_DIR)?;
     {
         let input_file = Path::new(&input_file);
@@ -33,9 +32,7 @@ pub async fn call_processer(
             ));
         }
     }
-    println!("before script");
     let script_file = file_path.join(script.get_script_file_name());
-    println!("script: {:?}", script_file);
     let output = Command::new("python")
         .arg(script_file)
         .arg(format!("--input_video={}", input_file))
