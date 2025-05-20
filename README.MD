@@ -48,7 +48,7 @@ sequenceDiagram
 ### 1. リポジトリをクローン
 
 ```bash
-git clone git@github.com:ertlnagoya/Blockchain_IoT_Marketplace_enshu_2025.git
+git clone --recursive https://github.com/ertlnagoya/Blockchain_IoT_Marketplace.git
 ```
 
 ### 2. hardhat(ブロックチェーンの)セットアップ
@@ -75,14 +75,14 @@ npx hardhat run scripts/deployMerchandiseWithIoTMarket.ts --network localhost
 ```
 
 これによってローカルネットワークに、IoT Marketといくつかのサンプルデータがデプロイされます。
-（注意）コントラクトのデプロイは不安定で、コントラクト名が`Unrecognized Contract`になる失敗がある（DevContainer作成直後は失敗する印象）。  
+（注意）コントラクトのデプロイは不安定で、コントラクト名が`UnrecognizedContract`になる失敗がある（DevContainer作成直後は失敗する印象）。  
 デプロイしたコントラクト名が正常に表示されていない場合、`npx hardhat node`からやり直す。
 
 ### 3. Metamaskのセットアップ
 
 ブラウザの拡張機能である[MetaMask](https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn?hl=ja&utm_source=ext_sidebar)をインストールしてください。  
 次にMetaMaskの新規ウォレットを作成してください（パスワードは簡易で覚えやすい`password`を推奨、ここで作成したウォレットは実験では使わないから。）。  
-ウオレットの保護は`後で通知`でスキップしてください。  
+ウォレットの保護は`後で通知`でスキップしてください。  
 
 ブロックチェーンのネットワークを追加してください。  
 ![How to add a network](./images/how_to_network.png)  
@@ -172,7 +172,7 @@ code .
 ### 8. 購入手続きを行う
 
 Mediator(owner)で`raw_data`にmp4ファイルを出し入れして、mediatorに新しい動画が来たと認識させてください。  
-（注意）ファイル更新のnotifyはDocker上では不安定であるため、ファイル更新のイベントが検出されない場合はMediator(owner)で`cargo run`しなおしてください（最初の数回は失敗する印象）。
+（注意）ファイル更新のnotifyはDocker上では不安定であるため、ファイル更新のイベントが検出されない場合はMediator(owner)で`cargo run`し直してください（最初の数回は失敗する印象）。イベントが検出されたら、`cargo run`中で`watcher's event.kind: ...`と標準出力します（成功）。
 `localhost:5173`にアクセスし、metamaskでアカウントをbuyerのもの（UUIDが`0x3c`で始まるもの）に切り替えてください。  
 その後、mediator(owner)の実行によってデプロイされた商品を購入してください。  
 正しくセットアップされていれば、buyerはイベントをキャッチしてストレージサーバーから`downloads/`にファイルをダウンロードするはずです。
@@ -181,7 +181,7 @@ Mediator(owner)で`raw_data`にmp4ファイルを出し入れして、mediator�
 
 ## Tips
 
-- システムを再起動すると、ローカルネットワークのブロックとMetaMaskが持つブロックがずれることがある
+- システムを再起動すると、ローカルネットワークのブロックとMetaMaskが持つブロックがずれ、コントラクトの実行に失敗する。
   - 解決するときの手順
     1. MetaMaskの設定->高度な設定->アクティビティタブのデータを消去
     2. ブラウザを閉じる
