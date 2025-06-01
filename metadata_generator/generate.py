@@ -55,7 +55,7 @@ class MetadataGenerator:
             for _ in range(random.randint(1, self.license_plates_max_num))
         ]
 
-    def generate(self):
+    def generate(self, output_dir):
         random.seed(self.seed)
         self.generate_random_owner_ids()
 
@@ -84,7 +84,9 @@ class MetadataGenerator:
                     "access_policy": "consent-required",
                     "license_plates": license_plates,
                 }
-                print(metadata)
+                output_path = os.path.join(output_dir, f"{owner_id}_{data_uuid}.json")
+                with open(output_path, "w") as f:
+                    json.dump(metadata, f, indent=4)
 
 def main():
     # Load configuration
@@ -96,7 +98,10 @@ def main():
 
     seed = config.get("seed", 42)
     generator = MetadataGenerator(seed, config)
-    generator.generate()
+    output_dir = config.get("output_dir", "output")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    generator.generate(output_dir)
 
 if __name__ == "__main__":
     main()

@@ -17,5 +17,6 @@
     },  
     "owner_ids": ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8"],
     "detected_objects": ["person", "dog", "cat", "car"],
-    "license_plates_max_num": 3
+    "license_plates_max_num": 3,
+    "output_dir": "output"
 }
