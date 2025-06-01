@@ -1,0 +1,19 @@
+{
+    "owner_id": "0x0d92bab460b09297a542e4b0198e2c87e43c6262af",
+    "data_uuid": "0712fafb-e201-4285-9238-bbd2ee4eda70",
+    "timestamp": "2023-10-01 13:17:38",
+    "location": {
+        "lat": 37.13408662753049,
+        "lon": -121.15386176403827
+    },
+    "detected_objects": [
+        "car",
+        "person",
+        "cat"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "7NAYYOS",
+        "YEOZ906"
+    ]
+}

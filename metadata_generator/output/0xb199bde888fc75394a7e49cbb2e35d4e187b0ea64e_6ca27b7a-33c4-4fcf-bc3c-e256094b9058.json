@@ -1,0 +1,18 @@
+{
+    "owner_id": "0xb199bde888fc75394a7e49cbb2e35d4e187b0ea64e",
+    "data_uuid": "6ca27b7a-33c4-4fcf-bc3c-e256094b9058",
+    "timestamp": "2023-10-01 17:35:37",
+    "location": {
+        "lat": 37.035867675974295,
+        "lon": -121.76489475594207
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "CEASEH5",
+        "E5RWSF5",
+        "PAE9Z5J"
+    ]
+}

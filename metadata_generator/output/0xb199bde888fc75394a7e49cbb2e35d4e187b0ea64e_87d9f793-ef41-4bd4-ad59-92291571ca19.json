@@ -1,0 +1,19 @@
+{
+    "owner_id": "0xb199bde888fc75394a7e49cbb2e35d4e187b0ea64e",
+    "data_uuid": "87d9f793-ef41-4bd4-ad59-92291571ca19",
+    "timestamp": "2023-10-01 00:10:01",
+    "location": {
+        "lat": 37.035867675974295,
+        "lon": -121.76489475594207
+    },
+    "detected_objects": [
+        "dog",
+        "cat",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "BKERN6Y",
+        "JMK3TGM"
+    ]
+}

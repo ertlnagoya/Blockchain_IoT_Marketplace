@@ -1,0 +1,19 @@
+{
+    "owner_id": "0xb199bde888fc75394a7e49cbb2e35d4e187b0ea64e",
+    "data_uuid": "a7c2c95a-d99c-4f72-a201-fe8108d1dd48",
+    "timestamp": "2023-10-01 00:21:51",
+    "location": {
+        "lat": 37.035867675974295,
+        "lon": -121.76489475594207
+    },
+    "detected_objects": [
+        "person",
+        "car",
+        "dog"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "UBJJJX1",
+        "ALX44PA"
+    ]
+}

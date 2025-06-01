@@ -1,0 +1,21 @@
+{
+    "owner_id": "0xf75ee00ec09483e2ae03411d186cb24f764ddad17b",
+    "data_uuid": "62569931-62ff-428b-b199-408964e3bcf2",
+    "timestamp": "2023-10-01 10:05:07",
+    "location": {
+        "lat": 37.55235925531058,
+        "lon": -121.22032520088649
+    },
+    "detected_objects": [
+        "person",
+        "car",
+        "dog",
+        "cat"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "JEGXEYE",
+        "B900YEH",
+        "8UXZ3AD"
+    ]
+}

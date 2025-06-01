@@ -1,0 +1,17 @@
+{
+    "owner_id": "0xdebdbe4ffde843c5c0942476dafed98f4081ed2e38",
+    "data_uuid": "a383af81-9439-4038-bbc5-3fd531018af6",
+    "timestamp": "2023-10-01 08:54:00",
+    "location": {
+        "lat": 37.1464283901407,
+        "lon": -121.93796717606041
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "WSZV83X",
+        "PHX2KBV"
+    ]
+}

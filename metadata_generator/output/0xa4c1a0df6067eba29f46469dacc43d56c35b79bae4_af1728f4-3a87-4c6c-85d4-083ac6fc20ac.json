@@ -1,0 +1,18 @@
+{
+    "owner_id": "0xa4c1a0df6067eba29f46469dacc43d56c35b79bae4",
+    "data_uuid": "af1728f4-3a87-4c6c-85d4-083ac6fc20ac",
+    "timestamp": "2023-10-01 14:40:08",
+    "location": {
+        "lat": 37.50220335156186,
+        "lon": -121.48143506423312
+    },
+    "detected_objects": [
+        "car",
+        "dog",
+        "person"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "JKAZRVZ"
+    ]
+}

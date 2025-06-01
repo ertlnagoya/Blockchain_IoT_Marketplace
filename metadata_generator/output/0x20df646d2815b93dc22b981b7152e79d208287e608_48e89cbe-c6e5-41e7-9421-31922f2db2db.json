@@ -1,0 +1,19 @@
+{
+    "owner_id": "0x20df646d2815b93dc22b981b7152e79d208287e608",
+    "data_uuid": "48e89cbe-c6e5-41e7-9421-31922f2db2db",
+    "timestamp": "2023-10-01 00:21:19",
+    "location": {
+        "lat": 37.275426779164576,
+        "lon": -121.50171078279976
+    },
+    "detected_objects": [
+        "cat",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "FT4GC5I",
+        "CNIC4DT",
+        "ZNNVEJE"
+    ]
+}

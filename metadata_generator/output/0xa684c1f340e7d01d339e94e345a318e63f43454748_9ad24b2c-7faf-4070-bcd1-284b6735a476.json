@@ -1,0 +1,16 @@
+{
+    "owner_id": "0xa684c1f340e7d01d339e94e345a318e63f43454748",
+    "data_uuid": "9ad24b2c-7faf-4070-bcd1-284b6735a476",
+    "timestamp": "2023-10-01 14:46:28",
+    "location": {
+        "lat": 37.66868144093008,
+        "lon": -121.23146599053348
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "BFVTM6X"
+    ]
+}

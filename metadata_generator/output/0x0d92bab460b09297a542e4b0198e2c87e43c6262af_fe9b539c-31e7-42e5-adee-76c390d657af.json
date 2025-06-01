@@ -1,0 +1,17 @@
+{
+    "owner_id": "0x0d92bab460b09297a542e4b0198e2c87e43c6262af",
+    "data_uuid": "fe9b539c-31e7-42e5-adee-76c390d657af",
+    "timestamp": "2023-10-01 21:18:41",
+    "location": {
+        "lat": 37.13408662753049,
+        "lon": -121.15386176403827
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "QBNXZU1",
+        "EMTX015"
+    ]
+}

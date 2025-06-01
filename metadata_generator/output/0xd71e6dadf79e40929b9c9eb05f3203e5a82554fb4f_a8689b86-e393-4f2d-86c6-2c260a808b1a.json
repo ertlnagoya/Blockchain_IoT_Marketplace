@@ -1,0 +1,18 @@
+{
+    "owner_id": "0xd71e6dadf79e40929b9c9eb05f3203e5a82554fb4f",
+    "data_uuid": "a8689b86-e393-4f2d-86c6-2c260a808b1a",
+    "timestamp": "2023-10-01 22:42:18",
+    "location": {
+        "lat": 37.31839804789527,
+        "lon": -121.22861389133085
+    },
+    "detected_objects": [
+        "person",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "RJHRF34",
+        "JGVRP4R"
+    ]
+}

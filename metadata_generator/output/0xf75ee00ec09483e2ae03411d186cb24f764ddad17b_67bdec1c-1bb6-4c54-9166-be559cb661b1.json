@@ -1,0 +1,16 @@
+{
+    "owner_id": "0xf75ee00ec09483e2ae03411d186cb24f764ddad17b",
+    "data_uuid": "67bdec1c-1bb6-4c54-9166-be559cb661b1",
+    "timestamp": "2023-10-01 07:17:46",
+    "location": {
+        "lat": 37.55235925531058,
+        "lon": -121.22032520088649
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "MI560TO"
+    ]
+}

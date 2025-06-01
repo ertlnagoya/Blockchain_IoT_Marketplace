@@ -1,0 +1,21 @@
+{
+    "owner_id": "0x9e3359dd4ccba13ed55148644802487bce53eb5592",
+    "data_uuid": "841142c3-253f-46f5-9049-fb18981ff8b1",
+    "timestamp": "2023-10-01 17:42:06",
+    "location": {
+        "lat": 37.193462113255286,
+        "lon": -121.32486431829432
+    },
+    "detected_objects": [
+        "car",
+        "cat",
+        "dog",
+        "person"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "P33GIUN",
+        "WELAJM3",
+        "UM94W73"
+    ]
+}

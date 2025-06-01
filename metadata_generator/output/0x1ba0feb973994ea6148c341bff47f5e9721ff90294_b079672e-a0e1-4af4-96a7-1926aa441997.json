@@ -1,0 +1,18 @@
+{
+    "owner_id": "0x1ba0feb973994ea6148c341bff47f5e9721ff90294",
+    "data_uuid": "b079672e-a0e1-4af4-96a7-1926aa441997",
+    "timestamp": "2023-10-01 05:26:15",
+    "location": {
+        "lat": 37.73686251102895,
+        "lon": -121.92986042007855
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "MEMTO2V",
+        "DSIZB25",
+        "JT3MT2M"
+    ]
+}

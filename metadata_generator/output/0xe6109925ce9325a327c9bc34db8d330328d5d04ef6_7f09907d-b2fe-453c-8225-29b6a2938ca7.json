@@ -1,0 +1,14 @@
+{
+    "owner_id": "0xe6109925ce9325a327c9bc34db8d330328d5d04ef6",
+    "data_uuid": "7f09907d-b2fe-453c-8225-29b6a2938ca7",
+    "timestamp": "2023-10-01 22:51:25",
+    "location": {
+        "lat": 37.22452245728475,
+        "lon": -121.04353351178878
+    },
+    "detected_objects": [
+        "cat"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": []
+}

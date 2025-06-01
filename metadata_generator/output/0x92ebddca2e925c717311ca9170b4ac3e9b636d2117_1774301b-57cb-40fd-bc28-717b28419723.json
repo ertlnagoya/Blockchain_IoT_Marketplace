@@ -1,0 +1,17 @@
+{
+    "owner_id": "0x92ebddca2e925c717311ca9170b4ac3e9b636d2117",
+    "data_uuid": "1774301b-57cb-40fd-bc28-717b28419723",
+    "timestamp": "2023-10-01 00:38:04",
+    "location": {
+        "lat": 37.95893763379903,
+        "lon": -121.56826278660984
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "T16MIGO",
+        "VR9AHEM"
+    ]
+}

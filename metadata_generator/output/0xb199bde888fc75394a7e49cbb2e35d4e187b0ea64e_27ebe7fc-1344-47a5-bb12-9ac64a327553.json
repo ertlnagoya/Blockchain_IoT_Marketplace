@@ -1,0 +1,18 @@
+{
+    "owner_id": "0xb199bde888fc75394a7e49cbb2e35d4e187b0ea64e",
+    "data_uuid": "27ebe7fc-1344-47a5-bb12-9ac64a327553",
+    "timestamp": "2023-10-01 14:37:28",
+    "location": {
+        "lat": 37.035867675974295,
+        "lon": -121.76489475594207
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "9C70PA8",
+        "JX54PEG",
+        "JKS4I2N"
+    ]
+}

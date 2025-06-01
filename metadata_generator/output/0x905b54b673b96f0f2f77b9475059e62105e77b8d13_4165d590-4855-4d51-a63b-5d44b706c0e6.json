@@ -1,0 +1,15 @@
+{
+    "owner_id": "0x905b54b673b96f0f2f77b9475059e62105e77b8d13",
+    "data_uuid": "4165d590-4855-4d51-a63b-5d44b706c0e6",
+    "timestamp": "2023-10-01 00:27:49",
+    "location": {
+        "lat": 37.36301883461664,
+        "lon": -121.67605806318939
+    },
+    "detected_objects": [
+        "person",
+        "dog"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": []
+}

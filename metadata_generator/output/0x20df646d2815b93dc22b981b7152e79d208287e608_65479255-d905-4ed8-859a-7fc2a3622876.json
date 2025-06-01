@@ -1,0 +1,16 @@
+{
+    "owner_id": "0x20df646d2815b93dc22b981b7152e79d208287e608",
+    "data_uuid": "65479255-d905-4ed8-859a-7fc2a3622876",
+    "timestamp": "2023-10-01 01:46:16",
+    "location": {
+        "lat": 37.275426779164576,
+        "lon": -121.50171078279976
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "U280WC8"
+    ]
+}
