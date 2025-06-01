@@ -16,5 +16,6 @@
         "max": -121.0
     },  
     "owner_ids": ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8"],
-    "detected_objects": ["person", "dog", "cat", "car"]
+    "detected_objects": ["person", "dog", "cat", "car"],
+    "license_plates_max_num": 3
 }

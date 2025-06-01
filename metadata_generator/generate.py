@@ -25,6 +25,7 @@ class MetadataGenerator:
         self.longtitude_max = config["longtitude_range"]["max"]
         self.latitude_min = config["latitude_range"]["min"]
         self.latitude_max = config["latitude_range"]["max"]
+        self.license_plates_max_num = config["license_plates_max_num"]
 
     def generate(self):
         random.seed(self.seed)  # ここでrandomのseedを初期化
@@ -46,6 +47,9 @@ class MetadataGenerator:
         }
 
         for owner_id in self.owner_ids:
+            # ランダムな座標を生成
+            latitude = random.uniform(self.latitude_min, self.latitude_max)
+            longtitude = random.uniform(self.longtitude_min, self.longtitude_max)
             for data_uuid in self.data_uuids[owner_id]:
                 print(self.time_end - self.time_start)
                 # 2つの時間の間でランダムな時間を生成
@@ -53,9 +57,16 @@ class MetadataGenerator:
                 timestamp = random_time.strftime(self.timestamp_format)
                 # ランダムな検出物体を選択
                 detected_objects = random.sample(self.detected_objects, k=random.randint(1, len(self.detected_objects)))
-                # ランダムな座標を生成
-                latitude = random.uniform(self.latitude_min, self.latitude_max)
-                longtitude = random.uniform(self.longtitude_min, self.longtitude_max)
+                
+                if "car" in detected_objects:
+                    license_plates = []
+                    for _ in range(random.randint(1, self.license_plates_max_num)):
+                    # 車のナンバープレートを生成
+                        license_plate = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
+                        license_plates.append(license_plate)
+                else:
+                    license_plates = []
+
                 # メタデータを生成
                 metadata = {
                     "owner_id": owner_id,  # カメラ所有者のID（ブロックチェーン上での識別子）
@@ -63,7 +74,8 @@ class MetadataGenerator:
                     "timestamp": timestamp,  # 動画の撮影日時
                     "location": {"lat": latitude, "lon": longtitude},   # カメラの座標
                     "detected_objects": detected_objects,  # 検出物体のリスト
-                    "access_policy": "consent-required"  # 今回は利用しない
+                    "access_policy": "consent-required",  # 今回は利用しない
+                    "license_plates": license_plates,  # 車のナンバープレート
                 }
                 print(metadata)
 
