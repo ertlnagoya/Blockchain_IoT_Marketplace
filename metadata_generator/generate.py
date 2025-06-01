@@ -27,10 +27,7 @@ class MetadataGenerator:
         self.latitude_max = config["latitude_range"]["max"]
         self.license_plates_max_num = config["license_plates_max_num"]
 
-    def generate(self):
-        random.seed(self.seed)  # ここでrandomのseedを初期化
-
-        # owner_ids（イーサリアムのアドレス）を必要数生成
+    def generate_random_owner_ids(self):
         if len(self.owner_ids) < self.owners_num:
             self.owner_ids = self.owner_ids[:self.owners_num]
             num_to_generate = self.owners_num - len(self.owner_ids)
@@ -39,43 +36,53 @@ class MetadataGenerator:
                 for _ in range(num_to_generate)
             ]
             self.owner_ids.extend(new_ids)
-        
-        # 各ownerのデータのUUIDを生成
+
+    def generate_random_coordinates(self):
+        latitude = random.uniform(self.latitude_min, self.latitude_max)
+        longtitude = random.uniform(self.longtitude_min, self.longtitude_max)
+        return latitude, longtitude
+
+    def generate_random_timestamp(self):
+        random_time = self.time_start + (self.time_end - self.time_start) * random.random()
+        return random_time.strftime(self.timestamp_format)
+
+    def generate_random_detected_objects(self):
+        return random.sample(self.detected_objects, k=random.randint(1, len(self.detected_objects)))
+
+    def generate_random_license_plates(self):
+        return [
+            ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
+            for _ in range(random.randint(1, self.license_plates_max_num))
+        ]
+
+    def generate(self):
+        random.seed(self.seed)
+        self.generate_random_owner_ids()
+
         self.data_uuids = {
             owner_id: [str(uuid.uuid4()) for _ in range(self.each_owners_data_num)]
             for owner_id in self.owner_ids
         }
 
         for owner_id in self.owner_ids:
-            # ランダムな座標を生成
-            latitude = random.uniform(self.latitude_min, self.latitude_max)
-            longtitude = random.uniform(self.longtitude_min, self.longtitude_max)
+            latitude, longtitude = self.generate_random_coordinates()
             for data_uuid in self.data_uuids[owner_id]:
-                print(self.time_end - self.time_start)
-                # 2つの時間の間でランダムな時間を生成
-                random_time = self.time_start + (self.time_end - self.time_start) * random.random()
-                timestamp = random_time.strftime(self.timestamp_format)
-                # ランダムな検出物体を選択
-                detected_objects = random.sample(self.detected_objects, k=random.randint(1, len(self.detected_objects)))
-                
+                timestamp = self.generate_random_timestamp()
+                detected_objects = self.generate_random_detected_objects()
+
                 if "car" in detected_objects:
-                    license_plates = []
-                    for _ in range(random.randint(1, self.license_plates_max_num)):
-                    # 車のナンバープレートを生成
-                        license_plate = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
-                        license_plates.append(license_plate)
+                    license_plates = self.generate_random_license_plates()
                 else:
                     license_plates = []
 
-                # メタデータを生成
                 metadata = {
-                    "owner_id": owner_id,  # カメラ所有者のID（ブロックチェーン上での識別子）
-                    "data_uuid": data_uuid, # カメラ所有者が動画を識別するためのID
-                    "timestamp": timestamp,  # 動画の撮影日時
-                    "location": {"lat": latitude, "lon": longtitude},   # カメラの座標
-                    "detected_objects": detected_objects,  # 検出物体のリスト
-                    "access_policy": "consent-required",  # 今回は利用しない
-                    "license_plates": license_plates,  # 車のナンバープレート
+                    "owner_id": owner_id,
+                    "data_uuid": data_uuid,
+                    "timestamp": timestamp,
+                    "location": {"lat": latitude, "lon": longtitude},
+                    "detected_objects": detected_objects,
+                    "access_policy": "consent-required",
+                    "license_plates": license_plates,
                 }
                 print(metadata)
 
