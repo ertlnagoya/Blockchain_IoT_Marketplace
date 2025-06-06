@@ -343,7 +343,7 @@ async fn monitor_folder(path: &str) -> Option<PathBuf> {
         .ok()?;
     println!("monitor_folder created watcher. Path:{path}");
 
-    let result = rx.iter().flatten().find_map(|event| {
+    rx.iter().flatten().find_map(|event| {
         println!("watcher's event.kind: {:?}", event.kind);
         if let EventKind::Create(notify::event::CreateKind::File) = event.kind {
             event.paths.first().cloned()
@@ -354,8 +354,5 @@ async fn monitor_folder(path: &str) -> Option<PathBuf> {
         } else {
             None
         }
-    });
-
-    drop(watcher);
-    result
+    })
 }

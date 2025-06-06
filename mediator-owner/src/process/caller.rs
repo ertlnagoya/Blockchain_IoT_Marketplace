@@ -32,6 +32,7 @@ pub async fn call_processer(
             ));
         }
     }
+
     let script_file = file_path.join(script.get_script_file_name());
     let output = Command::new("python")
         .arg(script_file)
