@@ -25,3 +25,18 @@ curl -L http://localhost:8080/ipfs/QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2
 curl -X POST http://host.docker.internal:5001/api/v0/version
 curl -L http://host.docker.internal:8080/ipfs/QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2j
 ```
+
+## ストアしたデータを消す
+
+volumeを確認する．
+
+```bash
+docker volume ls
+```
+
+消す．
+
+```bash
+docker volume rm ipfs_ipfs_data
+docker volume rm ipfs_ipfs_staging
+```
