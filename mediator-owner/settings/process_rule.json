@@ -1,0 +1,56 @@
+[
+    {
+        "target": ".*\\.mp4$",
+        "processer": {
+            "package": "CompressVideo",
+            "args": []
+        },
+        "metadata": {
+            "package": "Basic",
+            "args": []
+        },
+        "contract": {
+            "permissions": [
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            ],
+            "price": 200,
+            "distribution_service": "simple-storage"
+        }
+    },
+    {
+        "target": ".*\\.mp4$",
+        "processer": {
+            "package": "ExtractImage",
+            "args": []
+        },
+        "metadata": {
+            "package": "Basic",
+            "args": []
+        },
+        "contract": {
+            "permissions": [
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            ],
+            "price": 100,
+            "distribution_service": "simple-storage"
+        }
+    },
+    {
+        "target": ".*\\.mp4$",
+        "processer": {
+            "package": "InferHumanCount",
+            "args": []
+        },
+        "metadata": {
+            "package": "Basic",
+            "args": []
+        },
+        "contract": {
+            "permissions": [
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            ],
+            "price": 50,
+            "distribution_service": "simple-storage"
+        }
+    }
+]
