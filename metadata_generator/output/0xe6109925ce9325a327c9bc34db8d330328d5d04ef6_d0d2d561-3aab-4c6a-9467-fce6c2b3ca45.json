@@ -1,0 +1,17 @@
+{
+    "owner_id": "0xe6109925ce9325a327c9bc34db8d330328d5d04ef6",
+    "data_uuid": "d0d2d561-3aab-4c6a-9467-fce6c2b3ca45",
+    "timestamp": "2023-10-01 20:57:29",
+    "location": {
+        "lat": 37.22452245728475,
+        "lon": -121.04353351178878
+    },
+    "detected_objects": [
+        "person",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "EGBMXIK"
+    ]
+}

@@ -1,0 +1,17 @@
+{
+    "owner_id": "0x0d92bab460b09297a542e4b0198e2c87e43c6262af",
+    "data_uuid": "01244107-742d-4ec1-a0e8-f79c7d720f94",
+    "timestamp": "2023-10-01 09:52:11",
+    "location": {
+        "lat": 37.13408662753049,
+        "lon": -121.15386176403827
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "HKGAD7X",
+        "48WZE4E"
+    ]
+}

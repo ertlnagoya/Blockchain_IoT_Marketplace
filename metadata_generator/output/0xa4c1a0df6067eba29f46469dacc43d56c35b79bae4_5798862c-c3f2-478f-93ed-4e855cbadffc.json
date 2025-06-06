@@ -1,0 +1,17 @@
+{
+    "owner_id": "0xa4c1a0df6067eba29f46469dacc43d56c35b79bae4",
+    "data_uuid": "5798862c-c3f2-478f-93ed-4e855cbadffc",
+    "timestamp": "2023-10-01 04:59:43",
+    "location": {
+        "lat": 37.50220335156186,
+        "lon": -121.48143506423312
+    },
+    "detected_objects": [
+        "person",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "ASIKZOI"
+    ]
+}

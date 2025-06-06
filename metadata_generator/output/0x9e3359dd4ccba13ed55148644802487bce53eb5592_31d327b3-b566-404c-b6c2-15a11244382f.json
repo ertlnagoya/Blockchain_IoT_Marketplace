@@ -1,0 +1,19 @@
+{
+    "owner_id": "0x9e3359dd4ccba13ed55148644802487bce53eb5592",
+    "data_uuid": "31d327b3-b566-404c-b6c2-15a11244382f",
+    "timestamp": "2023-10-01 11:55:57",
+    "location": {
+        "lat": 37.193462113255286,
+        "lon": -121.32486431829432
+    },
+    "detected_objects": [
+        "car",
+        "cat"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "KFU90FP",
+        "I90MB0O",
+        "RR5SR5E"
+    ]
+}

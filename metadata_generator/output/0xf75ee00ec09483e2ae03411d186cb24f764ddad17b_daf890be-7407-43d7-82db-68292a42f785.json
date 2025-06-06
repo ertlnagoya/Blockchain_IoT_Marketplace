@@ -1,0 +1,17 @@
+{
+    "owner_id": "0xf75ee00ec09483e2ae03411d186cb24f764ddad17b",
+    "data_uuid": "daf890be-7407-43d7-82db-68292a42f785",
+    "timestamp": "2023-10-01 04:22:58",
+    "location": {
+        "lat": 37.55235925531058,
+        "lon": -121.22032520088649
+    },
+    "detected_objects": [
+        "person",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "J4TT43T"
+    ]
+}

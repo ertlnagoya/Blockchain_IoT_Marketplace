@@ -1,0 +1,21 @@
+{
+    "owner_id": "0xa4c1a0df6067eba29f46469dacc43d56c35b79bae4",
+    "data_uuid": "3a19e13f-5a0c-4e8f-9d55-b298abe25231",
+    "timestamp": "2023-10-01 10:00:42",
+    "location": {
+        "lat": 37.50220335156186,
+        "lon": -121.48143506423312
+    },
+    "detected_objects": [
+        "car",
+        "dog",
+        "person",
+        "cat"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "DLUCLLE",
+        "4A2G76R",
+        "WR3S18W"
+    ]
+}

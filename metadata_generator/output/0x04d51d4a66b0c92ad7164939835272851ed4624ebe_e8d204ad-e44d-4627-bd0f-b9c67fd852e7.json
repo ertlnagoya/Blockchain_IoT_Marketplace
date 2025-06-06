@@ -1,0 +1,16 @@
+{
+    "owner_id": "0x04d51d4a66b0c92ad7164939835272851ed4624ebe",
+    "data_uuid": "e8d204ad-e44d-4627-bd0f-b9c67fd852e7",
+    "timestamp": "2023-10-01 02:54:10",
+    "location": {
+        "lat": 37.812417884865255,
+        "lon": -121.57189272355001
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "0X717HW"
+    ]
+}

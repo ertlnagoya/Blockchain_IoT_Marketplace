@@ -1,0 +1,19 @@
+{
+    "owner_id": "0x92ebddca2e925c717311ca9170b4ac3e9b636d2117",
+    "data_uuid": "36f1be4d-c829-4941-bbc9-556734da9068",
+    "timestamp": "2023-10-01 21:58:20",
+    "location": {
+        "lat": 37.95893763379903,
+        "lon": -121.56826278660984
+    },
+    "detected_objects": [
+        "dog",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "DKFORDC",
+        "LVFD4PI",
+        "4SE4KBL"
+    ]
+}

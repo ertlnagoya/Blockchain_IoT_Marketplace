@@ -1,0 +1,18 @@
+{
+    "owner_id": "0xa4c1a0df6067eba29f46469dacc43d56c35b79bae4",
+    "data_uuid": "b7e01d95-c6d1-4d9f-aa4e-d5458a9c6310",
+    "timestamp": "2023-10-01 07:10:54",
+    "location": {
+        "lat": 37.50220335156186,
+        "lon": -121.48143506423312
+    },
+    "detected_objects": [
+        "car",
+        "person"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "ALUK873",
+        "22HR5SO"
+    ]
+}

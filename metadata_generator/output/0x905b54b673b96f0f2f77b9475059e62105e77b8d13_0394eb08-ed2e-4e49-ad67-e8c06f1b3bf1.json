@@ -1,0 +1,18 @@
+{
+    "owner_id": "0x905b54b673b96f0f2f77b9475059e62105e77b8d13",
+    "data_uuid": "0394eb08-ed2e-4e49-ad67-e8c06f1b3bf1",
+    "timestamp": "2023-10-01 04:13:02",
+    "location": {
+        "lat": 37.36301883461664,
+        "lon": -121.67605806318939
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "AV3G609",
+        "92A96GO",
+        "RCPACQ5"
+    ]
+}

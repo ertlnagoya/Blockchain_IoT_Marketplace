@@ -1,0 +1,17 @@
+{
+    "owner_id": "0xf75ee00ec09483e2ae03411d186cb24f764ddad17b",
+    "data_uuid": "1486c6f4-8052-4447-9d93-868be362502a",
+    "timestamp": "2023-10-01 22:15:01",
+    "location": {
+        "lat": 37.55235925531058,
+        "lon": -121.22032520088649
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "ZO7IO2F",
+        "2NATD4G"
+    ]
+}

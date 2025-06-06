@@ -1,0 +1,17 @@
+{
+    "owner_id": "0x27ee391c2f221fd53d6a55604791a2377121504c19",
+    "data_uuid": "843a4d62-4a95-4dc3-ae43-3364463a91f1",
+    "timestamp": "2023-10-01 02:04:17",
+    "location": {
+        "lat": 37.849999017737886,
+        "lon": -121.95678512415365
+    },
+    "detected_objects": [
+        "person",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "DVKBW8B"
+    ]
+}

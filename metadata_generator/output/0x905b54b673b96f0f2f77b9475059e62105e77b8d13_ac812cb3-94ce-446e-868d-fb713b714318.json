@@ -1,0 +1,19 @@
+{
+    "owner_id": "0x905b54b673b96f0f2f77b9475059e62105e77b8d13",
+    "data_uuid": "ac812cb3-94ce-446e-868d-fb713b714318",
+    "timestamp": "2023-10-01 18:35:49",
+    "location": {
+        "lat": 37.36301883461664,
+        "lon": -121.67605806318939
+    },
+    "detected_objects": [
+        "person",
+        "cat",
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "M9DEOCI",
+        "RIO74JL"
+    ]
+}

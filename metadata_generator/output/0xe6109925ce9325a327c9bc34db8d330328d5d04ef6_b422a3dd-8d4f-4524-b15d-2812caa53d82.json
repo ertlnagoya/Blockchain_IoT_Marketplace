@@ -1,0 +1,18 @@
+{
+    "owner_id": "0xe6109925ce9325a327c9bc34db8d330328d5d04ef6",
+    "data_uuid": "b422a3dd-8d4f-4524-b15d-2812caa53d82",
+    "timestamp": "2023-10-01 21:12:02",
+    "location": {
+        "lat": 37.22452245728475,
+        "lon": -121.04353351178878
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "1LLH2R9",
+        "PEGLNUK",
+        "X496K4O"
+    ]
+}

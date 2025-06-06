@@ -1,0 +1,17 @@
+{
+    "owner_id": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "data_uuid": "0e09401e-6248-4123-92c9-9cff480d99d7",
+    "timestamp": "2023-10-01 19:21:57",
+    "location": {
+        "lat": 37.02502464964648,
+        "lon": -121.11576515478515
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "30UBMC9",
+        "7C7BO11"
+    ]
+}

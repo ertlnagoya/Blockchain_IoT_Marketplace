@@ -1,0 +1,21 @@
+{
+    "owner_id": "0xdebdbe4ffde843c5c0942476dafed98f4081ed2e38",
+    "data_uuid": "2aae2242-677e-4393-bea9-2908b0f6a9f2",
+    "timestamp": "2023-10-01 08:20:38",
+    "location": {
+        "lat": 37.1464283901407,
+        "lon": -121.93796717606041
+    },
+    "detected_objects": [
+        "cat",
+        "car",
+        "person",
+        "dog"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "FKJNAWN",
+        "GA41IZX",
+        "TNSRTWL"
+    ]
+}

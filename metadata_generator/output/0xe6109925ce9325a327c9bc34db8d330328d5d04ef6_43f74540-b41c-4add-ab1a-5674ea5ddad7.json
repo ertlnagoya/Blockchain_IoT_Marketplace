@@ -1,0 +1,16 @@
+{
+    "owner_id": "0xe6109925ce9325a327c9bc34db8d330328d5d04ef6",
+    "data_uuid": "43f74540-b41c-4add-ab1a-5674ea5ddad7",
+    "timestamp": "2023-10-01 09:06:19",
+    "location": {
+        "lat": 37.22452245728475,
+        "lon": -121.04353351178878
+    },
+    "detected_objects": [
+        "car"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "NNEZTEE"
+    ]
+}

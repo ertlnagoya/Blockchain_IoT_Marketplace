@@ -1,0 +1,18 @@
+{
+    "owner_id": "0x0d92bab460b09297a542e4b0198e2c87e43c6262af",
+    "data_uuid": "cb957410-2eef-4a57-b4e1-613c93c9f5a9",
+    "timestamp": "2023-10-01 11:53:58",
+    "location": {
+        "lat": 37.13408662753049,
+        "lon": -121.15386176403827
+    },
+    "detected_objects": [
+        "cat",
+        "car",
+        "person"
+    ],
+    "access_policy": "consent-required",
+    "license_plates": [
+        "LEKVL9P"
+    ]
+}
