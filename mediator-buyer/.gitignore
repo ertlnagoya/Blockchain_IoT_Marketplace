@@ -1,7 +1,0 @@
-/target
-.DS_Store
-/scripts/assets/*
-/downloads/*
-!/downloads/.gitkeep
-/uploads/*
-!/uploads/.gitkeep
