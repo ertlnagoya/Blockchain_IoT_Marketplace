@@ -8,10 +8,22 @@ services:
       - "5001:5001"   # API
       - "8080:8080"   # Gateway
     volumes:
-      - ipfs_staging:/export
       - ipfs_data:/data/ipfs
+    restart: unless-stopped
+  
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
-  ipfs_staging:
   ipfs_data:
+  pg_data:
