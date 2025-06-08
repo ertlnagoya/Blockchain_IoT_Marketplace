@@ -54,11 +54,7 @@ fn fetch_ipfs_cid_content(cid: &str) {
     }
 }
 
-fn main() {
-    let cid = "QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2j"; // 例としてCIDを指定
-    check_ipfs_access();
-    fetch_ipfs_cid_content(cid);
-
+fn check_postgres_connection() {
     let mut client = match Client::connect(
         "host=host.docker.internal user=dev password=devpassword dbname=mydb",
         NoTls,
@@ -80,4 +76,10 @@ fn main() {
             eprintln!("PostgreSQLクエリ実行エラー: {}", e);
         }
     }
+}
+fn main() {
+    let cid = "QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2j"; // 例としてCIDを指定
+    check_ipfs_access();
+    fetch_ipfs_cid_content(cid);
+    check_postgres_connection();
 }
