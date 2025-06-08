@@ -20,6 +20,7 @@ notify = "7.0.0"
 chrono = "0.4.39"
 regex = "1.11.1"
 thiserror = "2.0.10"
+postgres = { version = "0.19.4", features = ["with-chrono-0_4"] }
 
 [profile.release]
 strip = true

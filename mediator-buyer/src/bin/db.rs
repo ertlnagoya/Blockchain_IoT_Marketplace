@@ -1,3 +1,4 @@
+use postgres::{Client, NoTls};
 use std::process::Command;
 
 fn check_ipfs_access() {
@@ -57,4 +58,26 @@ fn main() {
     let cid = "QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2j"; // 例としてCIDを指定
     check_ipfs_access();
     fetch_ipfs_cid_content(cid);
+
+    let mut client = match Client::connect(
+        "host=host.docker.internal user=dev password=devpassword dbname=mydb",
+        NoTls,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("PostgreSQLに接続できません: {}", e);
+            return;
+        }
+    };
+
+    match client.simple_query("SELECT version();") {
+        Ok(rows) => {
+            for row in rows {
+                println!("PostgreSQLバージョン情報: {:?}", row);
+            }
+        }
+        Err(e) => {
+            eprintln!("PostgreSQLクエリ実行エラー: {}", e);
+        }
+    }
 }
