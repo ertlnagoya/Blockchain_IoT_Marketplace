@@ -7,6 +7,7 @@ from collections import namedtuple, defaultdict
 import random
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+import json
 
 # 画像が保存されているディレクトリ（再帰的に探索）
 frames_dir = r'C:\Users\yuichiro.yasue\Downloads\mevid-v1-bbox-test\bbox_test'
@@ -16,22 +17,26 @@ output_movie_seconds = 60 * 5  # 5 minutes
 
 BBoxInfo = namedtuple('BBoxInfo', ['pedestrian_id', 'outfit', 'camera', 'tracklet'])
 
-def get_bbox_infos2frames_path(frames_dir):
+def get_bbox_info(path):
+    # ファイル名からBBoxInfoを抽出
     pattern = re.compile(r'([0-9]*)O([0-9]*)C([0-9]*)T([0-9]*)F([0-9]*).jpg$', re.IGNORECASE)
+    match = pattern.match(os.path.basename(path))
+    if match:
+        return BBoxInfo(
+            pedestrian_id=match.group(1),
+            outfit=match.group(2),
+            camera=match.group(3),
+            tracklet=match.group(4)
+        )
+    return None
 
+def get_bbox_infos2frames_path(frames_dir):
     bbox_infos2frames_path = defaultdict(list)
     for root, dirs, files in os.walk(frames_dir):
         for file in files:
-            match = pattern.match(file)
-            if not match: continue
-            bbox_info = BBoxInfo(
-                pedestrian_id=match.group(1),
-                outfit=match.group(2),
-                camera=match.group(3),
-                tracklet=match.group(4)
-            )
-            bbox_infos2frames_path[bbox_info].append(os.path.join(root, file))
-
+            bbox_info = get_bbox_info(os.path.join(root, file))
+            if bbox_info is not None:
+                bbox_infos2frames_path[bbox_info].append(os.path.join(root, file))
     return bbox_infos2frames_path
 
 
@@ -78,19 +83,37 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(video_path, fourcc, frames_per_second, (max_width, max_height))
 
-    for img_path in movie_image_paths:
+    person_dict = defaultdict(list)  # pedestrian_id -> [(start_frame, end_frame), ...]
+    pedestrian_id = None
+    start_frame = None
+
+    for i, img_path in enumerate(movie_image_paths):
         if img_path is None:
             # 「誰もいない」フレームを生成（黒い画像）
             empty_frame = np.zeros((max_height, max_width, 3), dtype=np.uint8)
             out.write(empty_frame)
         else:
             img = cv2.imread(img_path)
-            if img is not None:
-                # サイズを揃える
-                img_resized = cv2.resize(img, (max_width, max_height))
-                out.write(img_resized)
+            bbox_info = get_bbox_info(img_path)
+            assert bbox_info is not None, f"Failed to get BBoxInfo for {img_path}"
+            assert img is not None, f"Failed to read image {img_path}"
+            # サイズを揃える
+            img_resized = cv2.resize(img, (max_width, max_height))
+            out.write(img_resized)
+            if pedestrian_id is None or bbox_info.pedestrian_id != pedestrian_id:
+                # 新しいpedestrian_idが見つかった場合
+                if pedestrian_id is not None:
+                    # 前のpedestrian_idの終了フレームを記録
+                    person_dict[pedestrian_id].append((start_frame, i - 1))
+                pedestrian_id = bbox_info.pedestrian_id
+                start_frame = i
+    if pedestrian_id is not None:
+        # 最後のpedestrian_idの終了フレームを記録
+        person_dict[pedestrian_id].append((start_frame, len(movie_image_paths) - 1))
 
     out.release()
+
+    return person_dict
 
 
 def main():
@@ -141,29 +164,40 @@ def main():
             image_paths.extend([None] * insert_lengths[i + 1])
 
         movies_image_paths = chunk_list(image_paths, each_output_movies_num)
-        print([len(movie) for movie in movies_image_paths])
         assert all(len(movie) == output_movie_seconds * frames_per_second for movie in movies_image_paths), \
             "Each movie must have the same number of frames."
-        exit()
 
         # 各動画を並列で作成
         def process_movie(args):
             i, movie_image_paths = args
             if not movie_image_paths:
                 return
-            video_name = f"{camera_id}_movie_{i}.mp4"
-            video_path = os.path.join(output_dir, video_name)
-            create_movie_from_images(
+            video_name = f"{camera_id}_movie_{i}"
+            video_path = os.path.join(output_dir, f"{video_name}.mp4")
+            json_path = os.path.join(output_dir, f"{video_name}.json")
+            json_data = create_movie_from_images(
                 movie_image_paths,
                 video_path,
                 camera_id,
                 bbox_infos2frames_path,
                 frames_per_second
             )
-            print(f"Created {video_name} with {len(movie_image_paths)} frames.")
+            with open(json_path, 'w') as f:
+                json.dump(json_data, f, indent=2)
+            print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}")
 
         with ThreadPoolExecutor() as executor:
-            executor.map(process_movie, enumerate(movies_image_paths))
+            futures = []
+            for args in enumerate(movies_image_paths):
+                futures.append(executor.submit(process_movie, args))
+            try:
+                for f in futures:
+                    f.result()
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt detected. Cancelling...")
+                for f in futures:
+                    f.cancel()
+                raise
 
 
 if __name__ == "__main__":
