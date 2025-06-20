@@ -1,3 +1,4 @@
+from math import ceil
 import cv2
 import os
 import glob
@@ -11,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 frames_dir = r'C:\Users\yuichiro.yasue\Downloads\mevid-v1-bbox-test\bbox_test'
 output_dir = "output/"
 frames_per_second = 30  # Assuming 30 FPS
-movies_per_camera = 10  # Assuming we want to create 10 movies per camera
+output_movie_seconds = 60 * 5  # 5 minutes
 
 BBoxInfo = namedtuple('BBoxInfo', ['pedestrian_id', 'outfit', 'camera', 'tracklet'])
 
@@ -111,6 +112,8 @@ def main():
               f"with {frames_num} frames ({frames_num / frames_per_second:.2f} seconds).")
     max_frames_per_camera = max(each_camera_frames.values())    
     print(f"max_frames_per_camera: {max_frames_per_camera} frames ({max_frames_per_camera / frames_per_second:.2f} seconds).")
+    each_output_movies_num = ceil(max_frames_per_camera / (frames_per_second * output_movie_seconds))
+    print(f"Each camera will have {each_output_movies_num} output movies.")
 
 
     for camera_id, bbox_infos in camera2bbox_infos.items():
@@ -122,7 +125,7 @@ def main():
         total_original_frames = sum([len(bbox_infos2frames_path[b]) for b in bbox_infos])
 
         # 挿入する「誰もいない」フレームの総数
-        total_insert_frames = max_frames_per_camera - total_original_frames
+        total_insert_frames = each_output_movies_num * output_movie_seconds * frames_per_second - total_original_frames
         # gap数を「先頭」「間」「末尾」の分だけ増やす
         num_gaps_with_ends = len(bbox_infos) + 1
         if num_gaps_with_ends > 0 and total_insert_frames > 0:
@@ -131,14 +134,17 @@ def main():
             insert_lengths = [base + (1 if i < remainder else 0) for i in range(num_gaps_with_ends)]
         else:
             insert_lengths = []
-        
-        image_paths = [[None] * insert_lengths[0]]  # 先頭に空フレームを追加
+
+        image_paths = [None] * insert_lengths[0]  # 先頭に空フレームを追加
         for i, bbox_info in enumerate(bbox_infos):
             image_paths.extend(bbox_infos2frames_path[bbox_info])
             image_paths.extend([None] * insert_lengths[i + 1])
 
-        
-        movies_image_paths = chunk_list(image_paths, movies_per_camera)
+        movies_image_paths = chunk_list(image_paths, each_output_movies_num)
+        print([len(movie) for movie in movies_image_paths])
+        assert all(len(movie) == output_movie_seconds * frames_per_second for movie in movies_image_paths), \
+            "Each movie must have the same number of frames."
+        exit()
 
         # 各動画を並列で作成
         def process_movie(args):
