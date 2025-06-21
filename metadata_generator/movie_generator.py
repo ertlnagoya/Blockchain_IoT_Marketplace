@@ -178,13 +178,19 @@ def main():
             video_name = f"{camera_id}_movie_{i}"
             video_path = os.path.join(output_dir, f"{video_name}.mp4")
             json_path = os.path.join(output_dir, f"{video_name}.json")
-            json_data = create_movie_from_images(
+            person_ids = create_movie_from_images(
                 movie_image_paths,
                 video_path,
                 camera_id,
                 bbox_infos2frames_path,
                 frames_per_second
             )
+            json_data = {
+                "camera_id": camera_id,
+                "movie_id": video_name,
+                "person_ids": person_ids
+            }
+
             with open(json_path, 'w') as f:
                 json.dump(json_data, f, indent=2)
             print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}")
