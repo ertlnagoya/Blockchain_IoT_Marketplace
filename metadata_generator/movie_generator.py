@@ -8,6 +8,7 @@ import random
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import json
+from concurrent.futures import as_completed
 
 # 画像が保存されているディレクトリ（再帰的に探索）
 frames_dir = r'C:\Users\yuichiro.yasue\Downloads\mevid-v1-bbox-test\bbox_test'
@@ -61,14 +62,19 @@ def calculate_max_size(camera_id, bbox_infos2frames_path):
         img_paths.extend(bbox_infos2frames_path[bbox_info])
 
     max_width, max_height = 0, 0
-    with ThreadPoolExecutor(max_workers=8) as executor:  # スレッド数を指定
-        for i, (w, h) in enumerate(executor.map(_get_img_size, img_paths)):
-            if i % 3000 == 0:
-                print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", flush=True)
-            if w > max_width:
-                max_width = w
-            if h > max_height:
-                max_height = h
+    with ThreadPoolExecutor(max_workers=64) as executor:
+        futures = [executor.submit(_get_img_size, img_path) for img_path in img_paths]
+        for i, future in enumerate(as_completed(futures)):
+            try:
+                w, h = future.result()
+                if w > max_width:
+                    max_width = w
+                if h > max_height:
+                    max_height = h
+                if i % 3000 == 0:
+                    print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", flush=True)
+            except Exception as e:
+                print(f"Error processing image: {e}", flush=True)
     return max_width, max_height
 
 # image_pathsをmovies_per_camera個に分割
