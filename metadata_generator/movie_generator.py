@@ -64,7 +64,7 @@ def calculate_max_size(camera_id, bbox_infos2frames_path):
     with ThreadPoolExecutor(max_workers=8) as executor:  # スレッド数を指定
         for i, (w, h) in enumerate(executor.map(_get_img_size, img_paths)):
             if i % 3000 == 0:
-                print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", )
+                print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", flush=True)
             if w > max_width:
                 max_width = w
             if h > max_height:
@@ -103,7 +103,7 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
                 'width': w,
                 'height': h
             }
-            return img_path, img, bbox
+            return img_path, canvas, bbox
         
         def __iter__(self):
             with ThreadPoolExecutor() as executor:
@@ -119,7 +119,7 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
     prefetcher = ImagePrefetcher(movie_image_paths, max_width, max_height)
     for i, (img_path, img, bbox) in enumerate(prefetcher):
         if i % 3000 == 0:
-            print(f"Processed {i} frames", os.path.basename(video_path))
+            print(f"Processed {i} frames", os.path.basename(video_path), flush=True)
         out.write(img)
         if img_path is not None:
             bbox_info = get_bbox_info(img_path)
@@ -215,7 +215,7 @@ def main():
 
             with open(json_path, 'w') as f:
                 json.dump(json_data, f, indent=2)
-            print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}")
+            print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}", flush=True)
 
         with ThreadPoolExecutor() as executor:
             futures = []
