@@ -83,9 +83,7 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(video_path, fourcc, frames_per_second, (max_width, max_height))
 
-    person_dict = defaultdict(list)  # pedestrian_id -> [(start_frame, end_frame), ...]
-    pedestrian_id = None
-    start_frame = None
+    person_dict = defaultdict(list)  # pedestrian_id -> [{frame, bbox}, ...]
 
     for i, img_path in enumerate(movie_image_paths):
         if img_path is None:
@@ -97,19 +95,24 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
             bbox_info = get_bbox_info(img_path)
             assert bbox_info is not None, f"Failed to get BBoxInfo for {img_path}"
             assert img is not None, f"Failed to read image {img_path}"
-            # サイズを揃える
-            img_resized = cv2.resize(img, (max_width, max_height))
-            out.write(img_resized)
-            if pedestrian_id is None or bbox_info.pedestrian_id != pedestrian_id:
-                # 新しいpedestrian_idが見つかった場合
-                if pedestrian_id is not None:
-                    # 前のpedestrian_idの終了フレームを記録
-                    person_dict[pedestrian_id].append((start_frame, i - 1))
-                pedestrian_id = bbox_info.pedestrian_id
-                start_frame = i
-    if pedestrian_id is not None:
-        # 最後のpedestrian_idの終了フレームを記録
-        person_dict[pedestrian_id].append((start_frame, len(movie_image_paths) - 1))
+            # 左上揃えで貼り付け
+            h, w = img.shape[:2]
+            canvas = np.zeros((max_height, max_width, 3), dtype=np.uint8)
+            paste_h = min(h, max_height)
+            paste_w = min(w, max_width)
+            canvas[:paste_h, :paste_w] = img[:paste_h, :paste_w]
+            out.write(canvas)
+            person_dict[bbox_info.pedestrian_id].append(
+                {
+                    'frame': i,
+                    'bbox': {
+                        'x': 0,  # 左上揃えなのでxは0
+                        'y': 0,  # 左上揃えなのでyは0
+                        'width': paste_w,
+                        'height': paste_h
+                    },
+                }
+            )
 
     out.release()
 
