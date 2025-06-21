@@ -56,8 +56,10 @@ def calculate_max_size(camera_id, bbox_infos2frames_path):
         img_paths.extend(bbox_infos2frames_path[bbox_info])
 
     max_width, max_height = 0, 0
-    with ThreadPoolExecutor() as executor:
-        for w, h in executor.map(_get_img_size, img_paths):
+    with ThreadPoolExecutor(max_workers=8) as executor:  # スレッド数を指定
+        for i, (w, h) in enumerate(executor.map(_get_img_size, img_paths)):
+            if i % 1000 == 0:
+                print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", )
             if w > max_width:
                 max_width = w
             if h > max_height:
@@ -76,7 +78,7 @@ def chunk_list(lst, n):
         start = end
     return chunks
 
-def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_infos2frames_path, frames_per_second):
+def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_infos2frames_path, frames_per_second, max_width, max_height):
     class ImagePrefetcher:
         def __init__(self, image_paths, max_width, max_height):
             self.image_paths = image_paths
@@ -102,8 +104,6 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
             with ThreadPoolExecutor() as executor:
                 yield from executor.map(self.load_image, self.image_paths)
 
-    max_width, max_height = calculate_max_size(camera_id, bbox_infos2frames_path)
-
     # 動画ライターの初期化
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(video_path, fourcc, frames_per_second, (max_width, max_height))
@@ -113,8 +113,8 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
     # 画像のプリフェッチ
     prefetcher = ImagePrefetcher(movie_image_paths, max_width, max_height)
     for i, (img_path, img, bbox) in enumerate(prefetcher):
-        if i % 100 == 0:
-            print(f"Processed {i} frames")
+        if i % 1000 == 0:
+            print(f"Processed {i} frames", os.path.basename(video_path))
         out.write(img)
         if img_path is not None:
             bbox_info = get_bbox_info(img_path)
@@ -182,6 +182,9 @@ def main():
         assert all(len(movie) == output_movie_seconds * frames_per_second for movie in movies_image_paths), \
             "Each movie must have the same number of frames."
 
+        max_width, max_height = calculate_max_size(camera_id, bbox_infos2frames_path)
+        print(f"Camera {camera_id} max size: {max_width}x{max_height}")
+
         # 各動画を並列で作成
         def process_movie(args):
             i, movie_image_paths = args
@@ -195,7 +198,9 @@ def main():
                 video_path,
                 camera_id,
                 bbox_infos2frames_path,
-                frames_per_second
+                frames_per_second,
+                max_width=max_width,
+                max_height=max_height
             )
             json_data = {
                 "camera_id": camera_id,
