@@ -42,12 +42,17 @@ def get_bbox_infos2frames_path(frames_dir):
 
 def calculate_max_size(camera_id, bbox_infos2frames_path):
     def _get_img_size(img_path):
-        img = cv2.imread(img_path)
-        if img is not None:
-            h, w = img.shape[:2]
-            return w, h
-        return 0, 0
-    
+        # 画像サイズだけ取得するためにimdecode+ファイル読み込みで高速化
+        try:
+            with open(img_path, 'rb') as f:
+                buf = np.frombuffer(f.read(1024 * 1024), dtype=np.uint8)  # 1MBまで読む
+            img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                h, w = img.shape[:2]
+                return w, h
+        except Exception:
+            raise RuntimeError(f"Failed to read image size for {img_path}")
+
     # camera_idに対応する画像パスを取得
     img_paths = []
     for bbox_info in bbox_infos2frames_path:
@@ -58,7 +63,7 @@ def calculate_max_size(camera_id, bbox_infos2frames_path):
     max_width, max_height = 0, 0
     with ThreadPoolExecutor(max_workers=8) as executor:  # スレッド数を指定
         for i, (w, h) in enumerate(executor.map(_get_img_size, img_paths)):
-            if i % 1000 == 0:
+            if i % 3000 == 0:
                 print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", )
             if w > max_width:
                 max_width = w
@@ -113,7 +118,7 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
     # 画像のプリフェッチ
     prefetcher = ImagePrefetcher(movie_image_paths, max_width, max_height)
     for i, (img_path, img, bbox) in enumerate(prefetcher):
-        if i % 1000 == 0:
+        if i % 3000 == 0:
             print(f"Processed {i} frames", os.path.basename(video_path))
         out.write(img)
         if img_path is not None:
