@@ -39,6 +39,8 @@ def get_bbox_infos2frames_path(frames_dir):
             bbox_info = get_bbox_info(os.path.join(root, file))
             if bbox_info is not None:
                 bbox_infos2frames_path[bbox_info].append(os.path.join(root, file))
+    for paths in bbox_infos2frames_path.values():
+        paths.sort()
     return bbox_infos2frames_path
 
 # image_pathsをmovies_per_camera個に分割
