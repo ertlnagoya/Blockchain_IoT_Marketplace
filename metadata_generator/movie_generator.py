@@ -9,6 +9,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import json
 from concurrent.futures import as_completed
+import tempfile
 
 # 画像が保存されているディレクトリ（再帰的に探索）
 frames_dir = r'C:\Users\yuichiro.yasue\Downloads\mevid-v1-bbox-test\bbox_test'
@@ -62,7 +63,7 @@ def calculate_max_size(camera_id, bbox_infos2frames_path):
         img_paths.extend(bbox_infos2frames_path[bbox_info])
 
     max_width, max_height = 0, 0
-    with ThreadPoolExecutor(max_workers=64) as executor:
+    with ThreadPoolExecutor(max_workers=12) as executor:
         futures = [executor.submit(_get_img_size, img_path) for img_path in img_paths]
         for i, future in enumerate(as_completed(futures)):
             try:
@@ -73,6 +74,11 @@ def calculate_max_size(camera_id, bbox_infos2frames_path):
                     max_height = h
                 if i % 3000 == 0:
                     print(f"Exploited {i} / {len(img_paths)} image sizes for camera {camera_id}", flush=True)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt detected. Cancelling...")
+                for f in futures:
+                    f.cancel()
+                raise
             except Exception as e:
                 print(f"Error processing image: {e}", flush=True)
     return max_width, max_height
@@ -89,7 +95,7 @@ def chunk_list(lst, n):
         start = end
     return chunks
 
-def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_infos2frames_path, frames_per_second, max_width, max_height):
+def create_movie_from_images(movie_image_paths, video_path, frames_per_second, max_width, max_height):
     class ImagePrefetcher:
         def __init__(self, image_paths, max_width, max_height):
             self.image_paths = image_paths
@@ -112,7 +118,7 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
             return img_path, canvas, bbox
         
         def __iter__(self):
-            with ThreadPoolExecutor() as executor:
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 yield from executor.map(self.load_image, self.image_paths)
 
     # 動画ライターの初期化
@@ -141,6 +147,48 @@ def create_movie_from_images(movie_image_paths, video_path, camera_id, bbox_info
 
     return person_dict
 
+def process_movie(kwargs):
+    video_path = kwargs['video_path']
+    video_name = kwargs['video_name']
+    movie_image_paths = kwargs['movie_image_paths']
+    max_width = kwargs['max_width']
+    max_height = kwargs['max_height']
+    camera_id = kwargs['camera_id']
+    json_path = kwargs['json_path']
+
+    if not movie_image_paths:
+        return
+    person_ids = create_movie_from_images(
+        movie_image_paths=movie_image_paths,
+        video_path=video_path,
+        frames_per_second=frames_per_second,
+        max_width=max_width,
+        max_height=max_height
+    )
+    json_data = {
+        "camera_id": camera_id,
+        "movie_id": video_name,
+        "person_ids": person_ids
+    }
+
+    with open(json_path, 'w') as f:
+        json.dump(json_data, f, indent=2)
+    print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}", flush=True)
+
+
+def get_completed_cameras(output_dir, movies_per_camera):
+    completed_cameras = set()
+    camera_movie_counts = defaultdict(int)
+    for file in os.listdir(output_dir):
+        if file.endswith(".mp4"):
+            match = re.match(r"(\d+)_movie_\d+\.mp4$", file)
+            if match:
+                camera_id = match.group(1)
+                camera_movie_counts[camera_id] += 1
+    for camera_id, count in camera_movie_counts.items():
+        if count == movies_per_camera:
+            completed_cameras.add(camera_id)
+    return completed_cameras
 
 def main():
     # bbox2frames_path[BBoxInfo] = [image_path, ...]
@@ -164,8 +212,13 @@ def main():
     each_output_movies_num = ceil(max_frames_per_camera / (frames_per_second * output_movie_seconds))
     print(f"Each camera will have {each_output_movies_num} output movies.")
 
+    completed_cameras = get_completed_cameras(output_dir, each_output_movies_num)
 
     for camera_id, bbox_infos in camera2bbox_infos.items():
+        if camera_id in completed_cameras:
+            print(f"Camera {camera_id} already completed. Skipping...")
+            continue
+
         # 各カメラの動画を作成
         print(f"Camera {camera_id} has {len(bbox_infos)} movies.")
 
@@ -197,45 +250,30 @@ def main():
         print(f"Camera {camera_id} max size: {max_width}x{max_height}")
 
         # 各動画を並列で作成
-        def process_movie(args):
-            i, movie_image_paths = args
-            if not movie_image_paths:
-                return
-            video_name = f"{camera_id}_movie_{i}"
-            video_path = os.path.join(output_dir, f"{video_name}.mp4")
-            json_path = os.path.join(output_dir, f"{video_name}.json")
-            person_ids = create_movie_from_images(
-                movie_image_paths,
-                video_path,
-                camera_id,
-                bbox_infos2frames_path,
-                frames_per_second,
-                max_width=max_width,
-                max_height=max_height
-            )
-            json_data = {
-                "camera_id": camera_id,
-                "movie_id": video_name,
-                "person_ids": person_ids
-            }
-
-            with open(json_path, 'w') as f:
-                json.dump(json_data, f, indent=2)
-            print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}", flush=True)
-
-        with ThreadPoolExecutor() as executor:
-            futures = []
-            for args in enumerate(movies_image_paths):
-                futures.append(executor.submit(process_movie, args))
-            try:
-                for f in futures:
-                    f.result()
-            except KeyboardInterrupt:
-                print("KeyboardInterrupt detected. Cancelling...")
-                for f in futures:
-                    f.cancel()
-                raise
-
+        with tempfile.TemporaryDirectory() as tmp_output_dir:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = []
+                for i, movie_image_paths in enumerate(movies_image_paths):
+                    video_name = f"{camera_id}_movie_{i}"
+                    video_path = os.path.join(tmp_output_dir, f"{video_name}.mp4")
+                    json_path = os.path.join(tmp_output_dir, f"{video_name}.json")
+                    kwargs = {"video_path": video_path, "video_name": video_name, "movie_image_paths": movie_image_paths,
+                            "max_width": max_width, "max_height": max_height, "camera_id": camera_id, "json_path": json_path}
+                    futures.append(executor.submit(process_movie, kwargs))
+                try:
+                    for f in futures:
+                        f.result()
+                except KeyboardInterrupt:
+                    print("KeyboardInterrupt detected. Cancelling...")
+                    for f in futures:
+                        f.cancel()
+                    raise
+            print(f"Finished processing camera {camera_id}.", flush=True)
+            # tmp_output_dirの中身をoutput_dirにコピー
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            for file in glob.glob(os.path.join(tmp_output_dir, "*")):
+                os.rename(file, os.path.join(output_dir, os.path.basename(file)))
 
 if __name__ == "__main__":
     main()
