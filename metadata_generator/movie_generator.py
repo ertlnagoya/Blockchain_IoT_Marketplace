@@ -53,57 +53,6 @@ def chunk_list(lst, n):
         start = end
     return chunks
 
-def create_movie_from_images(movie_image_paths, video_path, frames_per_second, max_width, max_height):
-    class ImagePrefetcher:
-        def __init__(self, image_paths, max_width, max_height):
-            self.image_paths = image_paths
-            self.empty_frame = np.zeros((max_height, max_width, 3), dtype=np.uint8)  # 黒い画像を事前に生成
-
-        def load_image(self, img_path):
-            if img_path is None:
-                return None, self.empty_frame, None
-            img = cv2.imread(img_path)
-            assert img is not None, f"Failed to load image: {img_path}"
-            canvas = np.zeros((max_height, max_width, 3), dtype=np.uint8)
-            h, w = img.shape[:2]
-            canvas[:h, :w] = img  # 左上揃えで貼り付け
-            bbox = {
-                'x': 0,  # 左上揃えなのでxは0
-                'y': 0,  # 左上揃えなのでyは0
-                'width': w,
-                'height': h
-            }
-            return img_path, canvas, bbox
-        
-        def __iter__(self):
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                yield from executor.map(self.load_image, self.image_paths)
-
-    # 動画ライターの初期化
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(video_path, fourcc, frames_per_second, (max_width, max_height))
-
-    person_dict = defaultdict(list)  # pedestrian_id -> [{frame, bbox}, ...]
-
-    # 画像のプリフェッチ
-    prefetcher = ImagePrefetcher(movie_image_paths, max_width, max_height)
-    for i, (img_path, img, bbox) in enumerate(prefetcher):
-        if i % 3000 == 0:
-            print(f"Processed {i} frames", os.path.basename(video_path), flush=True)
-        out.write(img)
-        if img_path is not None:
-            bbox_info = get_bbox_info(img_path)
-            assert bbox_info is not None, f"Failed to get BBoxInfo for {img_path}"
-            person_dict[bbox_info.pedestrian_id].append(
-                {
-                    'frame': i,
-                    'bbox': bbox
-                }
-            )
-
-    out.release()
-
-    return person_dict
 
 def get_completed_cameras(output_dir, movies_per_camera):
     completed_cameras = set()
@@ -242,18 +191,67 @@ class MovieGenerator:
             for file in glob.glob(os.path.join(tmp_output_dir, "*")):
                 os.rename(file, os.path.join(self.output_dir, os.path.basename(file)))
 
+    def create_movie_from_images(self, movie_image_paths, video_path):
+        class ImagePrefetcher:
+            def __init__(self, image_paths, max_width, max_height):
+                self.image_paths = image_paths
+                self.empty_frame = np.zeros((max_height, max_width, 3), dtype=np.uint8)  # 黒い画像を事前に生成
+
+            def load_image(self, img_path):
+                if img_path is None:
+                    return None, self.empty_frame, None
+                img = cv2.imread(img_path)
+                assert img is not None, f"Failed to load image: {img_path}"
+                canvas = np.zeros((self.max_height, self.max_width, 3), dtype=np.uint8)
+                h, w = img.shape[:2]
+                canvas[:h, :w] = img  # 左上揃えで貼り付け
+                bbox = {
+                    'x': 0,  # 左上揃えなのでxは0
+                    'y': 0,  # 左上揃えなのでyは0
+                    'width': w,
+                    'height': h
+                }
+                return img_path, canvas, bbox
+            
+            def __iter__(self):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    yield from executor.map(self.load_image, self.image_paths)
+
+        # 動画ライターの初期化
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(video_path, fourcc, frames_per_second, (self.max_width, self.max_height))
+
+        person_dict = defaultdict(list)  # pedestrian_id -> [{frame, bbox}, ...]
+
+        # 画像のプリフェッチ
+        prefetcher = ImagePrefetcher(movie_image_paths, self.max_width, self.max_height)
+        for i, (img_path, img, bbox) in enumerate(prefetcher):
+            if i % 3000 == 0:
+                print(f"Processed {i} frames", os.path.basename(video_path), flush=True)
+            out.write(img)
+            if img_path is not None:
+                bbox_info = get_bbox_info(img_path)
+                assert bbox_info is not None, f"Failed to get BBoxInfo for {img_path}"
+                person_dict[bbox_info.pedestrian_id].append(
+                    {
+                        'frame': i,
+                        'bbox': bbox
+                    }
+                )
+
+        out.release()
+
+        return person_dict
+
     def process_movie(self, kwargs):
         video_path = kwargs['video_path']
         video_name = kwargs['video_name']
         json_path = kwargs['json_path']
         movie_image_paths = kwargs['movie_image_paths']
 
-        person_ids = create_movie_from_images(
+        person_ids = self.create_movie_from_images(
             movie_image_paths=movie_image_paths,
             video_path=video_path,
-            frames_per_second=frames_per_second,
-            max_width=self.max_width,
-            max_height=self.max_height
         )
         json_data = {
             "camera_id": self.camera_id,
