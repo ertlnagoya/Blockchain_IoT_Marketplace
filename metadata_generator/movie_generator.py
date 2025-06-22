@@ -167,34 +167,21 @@ class MovieGenerator:
                     video_name = f"{self.camera_id}_movie_{i}"
                     video_path = os.path.join(tmp_output_dir, f"{video_name}.mp4")
                     json_path = os.path.join(tmp_output_dir, f"{video_name}.json")
-                    kwargs = {
-                        "video_path": video_path,
-                        "video_name": video_name,
-                        "movie_image_paths": movie_image_paths,
-                        "max_width": self.max_width,
-                        "max_height": self.max_height,
-                        "camera_id": self.camera_id,
-                        "json_path": json_path
-                    }
-                    futures.append(executor.submit(self.process_movie, kwargs))
-                try:
-                    for f in futures:
-                        f.result()
-                    
-                except KeyboardInterrupt:
-                    print("KeyboardInterrupt detected. Cancelling...")
-                    for f in futures:
-                        f.cancel()
-                    raise
+                    futures.append(executor.submit(self.create_movie_from_images, movie_image_paths, video_path, json_path))
+                for f in futures:
+                    video_name = f.result(timeout=None)
+                    print(f"returned from future: {video_name}", flush=True)
             if not os.path.exists(self.output_dir):
                 os.makedirs(self.output_dir)
             for file in glob.glob(os.path.join(tmp_output_dir, "*")):
                 os.rename(file, os.path.join(self.output_dir, os.path.basename(file)))
 
-    def create_movie_from_images(self, movie_image_paths, video_path):
+    def create_movie_from_images(self, movie_image_paths, video_path, json_path):
         class ImagePrefetcher:
             def __init__(self, image_paths, max_width, max_height):
                 self.image_paths = image_paths
+                self.max_width = max_width
+                self.max_height = max_height
                 self.empty_frame = np.zeros((max_height, max_width, 3), dtype=np.uint8)  # 黒い画像を事前に生成
 
             def load_image(self, img_path):
@@ -240,29 +227,15 @@ class MovieGenerator:
                 )
 
         out.release()
-
-        return person_dict
-
-    def process_movie(self, kwargs):
-        video_path = kwargs['video_path']
-        video_name = kwargs['video_name']
-        json_path = kwargs['json_path']
-        movie_image_paths = kwargs['movie_image_paths']
-
-        person_ids = self.create_movie_from_images(
-            movie_image_paths=movie_image_paths,
-            video_path=video_path,
-        )
         json_data = {
-            "camera_id": self.camera_id,
-            "movie_id": video_name,
-            "person_ids": person_ids
+            'camera_id': self.camera_id,
+            'video_name': os.path.basename(video_path),
+            "person_ids": person_dict
         }
-
         with open(json_path, 'w') as f:
             json.dump(json_data, f, indent=2)
-        print(f"Created {video_name} with {len(movie_image_paths)} frames. pedestrian count: {len(json_data)}", flush=True)
-
+        print(f"Created movie {video_path} with {len(movie_image_paths)} frames.", flush=True)
+        return os.path.basename(video_path)
 
 def main():
     # bbox2frames_path[BBoxInfo] = [image_path, ...]
