@@ -190,17 +190,30 @@ def get_completed_cameras(output_dir, movies_per_camera):
             completed_cameras.add(camera_id)
     return completed_cameras
 
-def main():
-    # bbox2frames_path[BBoxInfo] = [image_path, ...]
-    bbox_infos2frames_path = get_bbox_infos2frames_path(frames_dir)
-    print(f"Found {len(bbox_infos2frames_path)} movies.")
+def generate_movies_image_paths(bbox_infos2frames_path, each_camera_output_movies_num, output_movie_seconds, bbox_infos):
+    # まず、各bbox_infoに対応する画像数を取得
+    total_original_frames = sum([len(bbox_infos2frames_path[b]) for b in bbox_infos])
 
-    # camera2bbox_infos[camera_id] = [BBoxInfo, ...]
-    camera2bbox_infos = defaultdict(list)
-    for bbox_info, frames in bbox_infos2frames_path.items():
-        camera2bbox_infos[bbox_info.camera].append(bbox_info)
-    print(f"Found {len(camera2bbox_infos)} unique cameras.")
+    # 挿入する「誰もいない」フレームの総数
+    total_insert_frames = each_camera_output_movies_num * output_movie_seconds * frames_per_second - total_original_frames
+    # gap数を「先頭」「間」「末尾」の分だけ増やす
+    num_gaps_with_ends = len(bbox_infos) + 1
+    if num_gaps_with_ends > 0 and total_insert_frames > 0:
+        base = total_insert_frames // num_gaps_with_ends
+        remainder = total_insert_frames % num_gaps_with_ends
+        insert_lengths = [base + (1 if i < remainder else 0) for i in range(num_gaps_with_ends)]
+    else:
+        insert_lengths = []
 
+    image_paths = [None] * insert_lengths[0]  # 先頭に空フレームを追加
+    for i, bbox_info in enumerate(bbox_infos):
+        image_paths.extend(bbox_infos2frames_path[bbox_info])
+        image_paths.extend([None] * insert_lengths[i + 1])
+
+    movies_image_paths = chunk_list(image_paths, each_camera_output_movies_num)
+    return movies_image_paths
+
+def calculate_max_frames_per_camera(bbox_infos2frames_path, camera2bbox_infos):
     each_camera_frames = {}
     for camera_id, bbox_infos in camera2bbox_infos.items():
         frames_num = sum([len(bbox_infos2frames_path[bbox_info]) for bbox_info in bbox_infos])
@@ -208,11 +221,28 @@ def main():
         print(f"Camera {camera_id} has {len(bbox_infos)} movies.",
               f"with {frames_num} frames ({frames_num / frames_per_second:.2f} seconds).")
     max_frames_per_camera = max(each_camera_frames.values())    
-    print(f"max_frames_per_camera: {max_frames_per_camera} frames ({max_frames_per_camera / frames_per_second:.2f} seconds).")
-    each_output_movies_num = ceil(max_frames_per_camera / (frames_per_second * output_movie_seconds))
-    print(f"Each camera will have {each_output_movies_num} output movies.")
+    return max_frames_per_camera
 
-    completed_cameras = get_completed_cameras(output_dir, each_output_movies_num)
+def main():
+    # bbox2frames_path[BBoxInfo] = [image_path, ...]
+    bbox_infos2frames_path = get_bbox_infos2frames_path(frames_dir)
+    print(f"Found {len(bbox_infos2frames_path)} movies.")
+
+    # camera2bbox_infos[camera_id] = [BBoxInfo, ...]
+    camera2bbox_infos = defaultdict(list)
+    for bbox_info in bbox_infos2frames_path.keys():
+        camera2bbox_infos[bbox_info.camera].append(bbox_info)
+    print(f"Found {len(camera2bbox_infos)} unique cameras.")
+
+    max_frames_per_camera = calculate_max_frames_per_camera(
+        bbox_infos2frames_path=bbox_infos2frames_path,
+        camera2bbox_infos=camera2bbox_infos
+    )
+    print(f"max_frames_per_camera: {max_frames_per_camera} frames ({max_frames_per_camera / frames_per_second:.2f} seconds).")
+    each_camera_output_movies_num = ceil(max_frames_per_camera / (frames_per_second * output_movie_seconds))
+    print(f"Each camera will have {each_camera_output_movies_num} output movies.")
+
+    completed_cameras = get_completed_cameras(output_dir, each_camera_output_movies_num)
 
     for camera_id, bbox_infos in camera2bbox_infos.items():
         if camera_id in completed_cameras:
@@ -223,26 +253,13 @@ def main():
         print(f"Camera {camera_id} has {len(bbox_infos)} movies.")
 
         # 既存のbbox_infoの間に「誰もいない」フレームを挿入してmax_frames_per_cameraまで伸長
-        # まず、各bbox_infoに対応する画像数を取得
-        total_original_frames = sum([len(bbox_infos2frames_path[b]) for b in bbox_infos])
+        movies_image_paths = generate_movies_image_paths(
+            bbox_infos2frames_path=bbox_infos2frames_path,
+            each_camera_output_movies_num=each_camera_output_movies_num,
+            output_movie_seconds=output_movie_seconds,
+            bbox_infos=bbox_infos
+        )
 
-        # 挿入する「誰もいない」フレームの総数
-        total_insert_frames = each_output_movies_num * output_movie_seconds * frames_per_second - total_original_frames
-        # gap数を「先頭」「間」「末尾」の分だけ増やす
-        num_gaps_with_ends = len(bbox_infos) + 1
-        if num_gaps_with_ends > 0 and total_insert_frames > 0:
-            base = total_insert_frames // num_gaps_with_ends
-            remainder = total_insert_frames % num_gaps_with_ends
-            insert_lengths = [base + (1 if i < remainder else 0) for i in range(num_gaps_with_ends)]
-        else:
-            insert_lengths = []
-
-        image_paths = [None] * insert_lengths[0]  # 先頭に空フレームを追加
-        for i, bbox_info in enumerate(bbox_infos):
-            image_paths.extend(bbox_infos2frames_path[bbox_info])
-            image_paths.extend([None] * insert_lengths[i + 1])
-
-        movies_image_paths = chunk_list(image_paths, each_output_movies_num)
         assert all(len(movie) == output_movie_seconds * frames_per_second for movie in movies_image_paths), \
             "Each movie must have the same number of frames."
 
