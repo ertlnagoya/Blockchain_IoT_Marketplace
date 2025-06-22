@@ -119,28 +119,6 @@ def get_completed_cameras(output_dir, movies_per_camera):
             completed_cameras.add(camera_id)
     return completed_cameras
 
-def generate_movies_image_paths(bbox_infos2frames_path, each_camera_output_movies_num, output_movie_seconds, bbox_infos):
-    # まず、各bbox_infoに対応する画像数を取得
-    total_original_frames = sum([len(bbox_infos2frames_path[b]) for b in bbox_infos])
-
-    # 挿入する「誰もいない」フレームの総数
-    total_insert_frames = each_camera_output_movies_num * output_movie_seconds * frames_per_second - total_original_frames
-    # gap数を「先頭」「間」「末尾」の分だけ増やす
-    num_gaps_with_ends = len(bbox_infos) + 1
-    if num_gaps_with_ends > 0 and total_insert_frames > 0:
-        base = total_insert_frames // num_gaps_with_ends
-        remainder = total_insert_frames % num_gaps_with_ends
-        insert_lengths = [base + (1 if i < remainder else 0) for i in range(num_gaps_with_ends)]
-    else:
-        insert_lengths = []
-
-    image_paths = [None] * insert_lengths[0]  # 先頭に空フレームを追加
-    for i, bbox_info in enumerate(bbox_infos):
-        image_paths.extend(bbox_infos2frames_path[bbox_info])
-        image_paths.extend([None] * insert_lengths[i + 1])
-
-    movies_image_paths = chunk_list(image_paths, each_camera_output_movies_num)
-    return movies_image_paths
 
 def calculate_max_frames_per_camera(bbox_infos2frames_path, camera2bbox_infos):
     each_camera_frames = {}
@@ -163,13 +141,28 @@ class MovieGenerator:
         self.max_width = max_width
         self.max_height = max_height
 
-    def prepare_movies_image_paths(self):
-        return generate_movies_image_paths(
-            bbox_infos2frames_path=self.bbox_infos2frames_path,
-            each_camera_output_movies_num=self.each_camera_output_movies_num,
-            output_movie_seconds=self.output_movie_seconds,
-            bbox_infos=self.bbox_infos
-        )
+    def generate_movies_image_paths(self):
+        # まず、各bbox_infoに対応する画像数を取得
+        total_original_frames = sum([len(self.bbox_infos2frames_path[b]) for b in self.bbox_infos])
+
+        # 挿入する「誰もいない」フレームの総数
+        total_insert_frames = self.each_camera_output_movies_num * output_movie_seconds * frames_per_second - total_original_frames
+        # gap数を「先頭」「間」「末尾」の分だけ増やす
+        num_gaps_with_ends = len(self.bbox_infos) + 1
+        if num_gaps_with_ends > 0 and total_insert_frames > 0:
+            base = total_insert_frames // num_gaps_with_ends
+            remainder = total_insert_frames % num_gaps_with_ends
+            insert_lengths = [base + (1 if i < remainder else 0) for i in range(num_gaps_with_ends)]
+        else:
+            insert_lengths = []
+
+        image_paths = [None] * insert_lengths[0]  # 先頭に空フレームを追加
+        for i, bbox_info in enumerate(self.bbox_infos):
+            image_paths.extend(self.bbox_infos2frames_path[bbox_info])
+            image_paths.extend([None] * insert_lengths[i + 1])
+
+        movies_image_paths = chunk_list(image_paths, self.each_camera_output_movies_num)
+        return movies_image_paths
 
     def calculate_max_size(self, movies_image_paths):
         def _get_img_size(img_path):
@@ -211,7 +204,7 @@ class MovieGenerator:
 
 
     def generate_movies(self):
-        movies_image_paths = self.prepare_movies_image_paths()
+        movies_image_paths = self.generate_movies_image_paths()
         assert all(len(movie) == self.output_movie_seconds * frames_per_second for movie in movies_image_paths), \
             "Each movie must have the same number of frames."
 
