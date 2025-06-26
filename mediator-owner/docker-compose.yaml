@@ -11,11 +11,28 @@ services:
       - ./scripts:/app/scripts
       - ./Cargo.toml:/app/Cargo.toml
       - ./Cargo.lock:/app/Cargo.lock
-      - target:/app/target
+      - target-1:/app/target
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    working_dir: /app
+    entrypoint: ["cargo", "run"]
+  
+  mediator-owner-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/app/src
+      - ./settings:/app/settings
+      - ./scripts:/app/scripts
+      - ./Cargo.toml:/app/Cargo.toml
+      - ./Cargo.lock:/app/Cargo.lock
+      - target-2:/app/target
     extra_hosts:
       - host.docker.internal:host-gateway
     working_dir: /app
     entrypoint: ["cargo", "run"]
 
 volumes:
-  target:
+  target-1:
+  target-2:
