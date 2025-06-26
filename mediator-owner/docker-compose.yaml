@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  mediator-owner-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/app/src
+      - ./settings:/app/settings
+      - ./scripts:/app/scripts
+      - ./Cargo.toml:/app/Cargo.toml
+      - ./Cargo.lock:/app/Cargo.lock
+      - target:/app/target
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    working_dir: /app
+    entrypoint: ["cargo", "run"]
+
+volumes:
+  target:

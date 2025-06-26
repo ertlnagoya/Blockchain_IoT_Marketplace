@@ -1,37 +1,12 @@
 # use alpine image for use build target x86_64-unknown-linux-musl as default
-FROM rust:latest as builder
+FROM rust:1-bullseye
 
-# create a new empty shell project
-RUN USER=root cargo new --bin app
-WORKDIR /app
+RUN apt-get update && apt-get install -y \
+    git \
+    python3 \
+    python3-pip \
+    libopencv-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# copy over your manifests
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-
-# build fake program for cache dependencies
-RUN echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-RUN rm src/*.rs
-
-# copy your source tree
-COPY ./src ./src
-
-# build for release
-# change {app-name} to app name
-# アプリケーションに-を利用した場合はここだけ_に置き換えが起こる
-RUN rm ./target/release/deps/mediator_b*
-RUN cargo build --release
-
-# our final base
-FROM rust:slim
-
-# copy the build artifact from the build stage
-# change {app-name} to app name
-COPY --from=builder /app/target/release/mediator-b .
-COPY ./sample .
-
-EXPOSE 3000
-# set the startup command to run your binary
-# change {app-name} to app name
-CMD ["./mediator-b"]
+COPY scripts/requirements.txt /tmp/
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
