@@ -1,106 +1,22 @@
 version: "3.8"
 
 services:
-  mediator-owner-1:
+  owner:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: owner
     volumes:
       - ./src:/app/src:ro
       - ./settings:/app/settings:ro
       - ./scripts:/app/scripts:ro
       - ./Cargo.toml:/app/Cargo.toml:ro
       - ./Cargo.lock:/app/Cargo.lock:ro
-      - target-1:/app/target
+      - target:/app/target
     extra_hosts:
       - host.docker.internal:host-gateway
     working_dir: /app
-    entrypoint: ["cargo", "run"]
-  
-  mediator-owner-2:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./src:/app/src:ro
-      - ./settings:/app/settings:ro
-      - ./scripts:/app/scripts:ro
-      - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
-      - target-2:/app/target
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    working_dir: /app
-    entrypoint: ["cargo", "run"]
-
-  mediator-owner-3:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./src:/app/src:ro
-      - ./settings:/app/settings:ro
-      - ./scripts:/app/scripts:ro
-      - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
-      - target-3:/app/target
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    working_dir: /app
-    entrypoint: ["cargo", "run"]
-  
-  mediator-owner-4:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./src:/app/src:ro
-      - ./settings:/app/settings:ro
-      - ./scripts:/app/scripts:ro
-      - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
-      - target-4:/app/target
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    working_dir: /app
-    entrypoint: ["cargo", "run"]
-
-  mediator-owner-5:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./src:/app/src:ro
-      - ./settings:/app/settings:ro
-      - ./scripts:/app/scripts:ro
-      - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
-      - target-5:/app/target
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    working_dir: /app
-    entrypoint: ["cargo", "run"]
-  
-  mediator-owner-6:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./src:/app/src:ro
-      - ./settings:/app/settings:ro
-      - ./scripts:/app/scripts:ro
-      - ./Cargo.toml:/app/Cargo.toml:ro
-      - ./Cargo.lock:/app/Cargo.lock:ro
-      - target-6:/app/target
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    working_dir: /app
-    entrypoint: ["cargo", "run"]
+    entrypoint: ["sleep", "infinity"]
 
 volumes:
-  target-1:
-  target-2:
-  target-3:
-  target-4:
-  target-5:
-  target-6:
+  target:
