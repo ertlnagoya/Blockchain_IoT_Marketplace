@@ -54,6 +54,7 @@ pub struct Config {
     pub rawdata_dir: String,
     pub processed_dir: String,
     pub download_dir: String,
+    pub text_file_path: String,
 }
 
 impl Config {
@@ -143,7 +144,7 @@ async fn main() -> AppResult<()> {
     let config_clone = Arc::clone(&config);
     let watcher_thread = tokio::spawn(async move {
         let rules = rules.clone();
-        let file_path = PathBuf::from("raw_data/test.txt");
+        let file_path = PathBuf::from(&config_clone.text_file_path);
         println!("新しいファイルが作成されました: {:?}", file_path);
         // config.process_rule_file_pathの内容をもとに，ファイル名に従った処理を実行
         // ルールと照合する
