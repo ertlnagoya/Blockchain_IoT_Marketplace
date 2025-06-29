@@ -12,6 +12,7 @@ services:
       - ./scripts:/app/scripts:ro
       - ./Cargo.toml:/app/Cargo.toml:ro
       - ./Cargo.lock:/app/Cargo.lock
+      - ./raw_data:/app/raw_data:ro
       - target:/app/target
     extra_hosts:
       - host.docker.internal:host-gateway

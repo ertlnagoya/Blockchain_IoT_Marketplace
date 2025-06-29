@@ -143,57 +143,43 @@ async fn main() -> AppResult<()> {
     let config_clone = Arc::clone(&config);
     let watcher_thread = tokio::spawn(async move {
         let rules = rules.clone();
-        loop {
-            if let Some(file_path) = monitor_folder(&config_clone.rawdata_dir).await {
-                println!("新しいファイルが作成されました: {:?}", file_path);
-                // ルールと照合する
-                for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
-                    let processer = matched_rules.parse_processer().unwrap();
-                    let metadata = matched_rules.parse_metadata().unwrap();
-                    let processed_file = match process::caller::call_processer(
-                        file_path.to_str().unwrap(),
-                        &config_clone.processed_dir,
-                        processer,
-                    )
-                    .await
-                    {
-                        Ok(output) => output,
-                        Err(e) => {
-                            panic!("Error processing file: {}", e);
-                        }
-                    };
-                    let meta_info = metadata.create_metadata(&processed_file).unwrap();
-                    let contract_info = matched_rules.get_contract();
-                    let deploy_param = DeployParam::new(
-                        contract_info.get_price(),
-                        processed_file.clone(),
-                        config_clone.pubkey_contract_address.clone(),
-                        contract_info.get_permissions(),
-                        meta_info,
-                    )
-                    .await
-                    .unwrap();
-                    match deploy_eth_client.deploy_product(deploy_param).await {
-                        Ok(address) => {
-                            deploy_eth_client
-                                .register_product(&config_clone.iot_market_contract_address, address)
-                                .await
-                                .unwrap();
-                            db.insert(address, processed_file).await;
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "Error deploying product for file {:?}: {}",
-                                processed_file, e
-                            );
-                            continue; // Skip if deployment fails
-                        }
-                    }
-                    println!("File deployed successfully");
+        let file_path = PathBuf::from("raw_data/compressed_20250518_1300.mp4");
+        println!("新しいファイルが作成されました: {:?}", file_path);
+        // ルールと照合する
+        for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
+            let processer = matched_rules.parse_processer().unwrap();
+            let metadata = matched_rules.parse_metadata().unwrap();
+            let processed_file = file_path.clone();
+            let meta_info = metadata.create_metadata(&processed_file).unwrap();
+            let contract_info = matched_rules.get_contract();
+            let deploy_param = DeployParam::new(
+                contract_info.get_price(),
+                processed_file.clone(),
+                config_clone.pubkey_contract_address.clone(),
+                contract_info.get_permissions(),
+                meta_info,
+            )
+            .await
+            .unwrap();
+            match deploy_eth_client.deploy_product(deploy_param).await {
+                Ok(address) => {
+                    deploy_eth_client
+                        .register_product(&config_clone.iot_market_contract_address, address)
+                        .await
+                        .unwrap();
+                    db.insert(address, processed_file).await;
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Error deploying product for file {:?}: {}",
+                        processed_file, e
+                    );
+                    continue; // Skip if deployment fails
                 }
             }
-            time::sleep(Duration::from_secs(2)).await;
+            println!("File deployed successfully");
         }
+        time::sleep(Duration::from_secs(2)).await;
     });
 
     // watch blockchain
