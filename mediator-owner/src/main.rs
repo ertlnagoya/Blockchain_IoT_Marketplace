@@ -145,10 +145,13 @@ async fn main() -> AppResult<()> {
         let rules = rules.clone();
         let file_path = PathBuf::from("raw_data/test.txt");
         println!("新しいファイルが作成されました: {:?}", file_path);
+        // config.process_rule_file_pathの内容をもとに，ファイル名に従った処理を実行
         // ルールと照合する
         for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
             let metadata = matched_rules.parse_metadata().unwrap();
+            // processorの実行は省略（ファイルパスをそのまま使用）
             let processed_file = file_path.clone();
+            // デプロイするファイルの情報を取得（ファイルサイズや作成日時など）
             let meta_info = metadata.create_metadata(&processed_file).unwrap();
             let contract_info = matched_rules.get_contract();
             let deploy_param = DeployParam::new(
