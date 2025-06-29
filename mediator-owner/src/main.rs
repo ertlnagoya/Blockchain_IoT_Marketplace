@@ -143,11 +143,10 @@ async fn main() -> AppResult<()> {
     let config_clone = Arc::clone(&config);
     let watcher_thread = tokio::spawn(async move {
         let rules = rules.clone();
-        let file_path = PathBuf::from("raw_data/compressed_20250518_1300.mp4");
+        let file_path = PathBuf::from("raw_data/test.txt");
         println!("新しいファイルが作成されました: {:?}", file_path);
         // ルールと照合する
         for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
-            let processer = matched_rules.parse_processer().unwrap();
             let metadata = matched_rules.parse_metadata().unwrap();
             let processed_file = file_path.clone();
             let meta_info = metadata.create_metadata(&processed_file).unwrap();
