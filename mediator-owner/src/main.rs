@@ -20,6 +20,8 @@ use crate::{
 };
 use std::str::FromStr;
 use std::sync::Arc;
+use std::{env, fs};
+use std::process::exit;
 
 use errors::AppResult;
 use process::rule::RuleList;
@@ -50,8 +52,55 @@ const RAWDATA_DIR: &str = "/workspaces/mediator-owner/raw_data"; // IoT機器か
 const PROCESSED_DIR: &str = "processed_data"; // 加工データ(流通用データ)の保存先
 const DOWNLOAD_DIR: &str = "downloads"; // ダウンロードしたデータの保存先
 
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    pub api_url: String,
+    pub rpc_url: String,
+    pub eth_user_pubkey: String,
+    pub eth_user_privkey: String,
+    pub pubkey_contract_address: String,
+    pub iot_market_contract_address: String,
+    pub process_rule_file_path: String,
+    pub rawdata_dir: String,
+    pub processed_dir: String,
+    pub download_dir: String,
+}
+
+impl Config {
+    pub fn from_yaml_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        let yaml_str = fs::read_to_string(path)?;
+        let config: Config = serde_yaml::from_str(&yaml_str)?;
+        Ok(config)
+    }
+}
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
+    // コマンドライン引数を取得
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() != 2 {
+        eprintln!("使い方: {} <YAMLファイルのパス>", args[0]);
+        std::process::exit(1);
+    }
+
+    let filepath = &args[1];
+
+    // ファイル読み込み
+    match Config::from_yaml_file(filepath) {
+        Ok(cfg) => {
+            println!("API URL: {}", cfg.api_url);
+            println!("RAW DATA DIR: {}", cfg.rawdata_dir);
+            // 必要に応じて他の値も使う
+        }
+        Err(e) => {
+            eprintln!("設定ファイル読み込みエラー: {}", e);
+            std::process::exit(1);
+        }
+    }
+
     println!("====================");
     println!("Starting initialization");
     println!("====================");
