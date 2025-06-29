@@ -40,18 +40,6 @@ use std::sync::mpsc;
 use std::time::Duration;
 use tokio::time;
 
-const API_URL: &str = "http://host.docker.internal:3000"; // DataStorage API
-const RPC_URL: &str = "http://host.docker.internal:8545"; // Ethereum RPC
-const ETH_USER_PUBKEY: &str = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const ETH_USER_PRIVKEY: &str = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-const PUBKEY_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const IOT_MARKET_CONTRACT_ADDRESS: &str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-
-const PROCESS_RULE_FILE_PATH: &str = "settings/process_rule.json";
-const RAWDATA_DIR: &str = "/workspaces/mediator-owner/raw_data"; // IoT機器からのデータの保存先
-const PROCESSED_DIR: &str = "processed_data"; // 加工データ(流通用データ)の保存先
-const DOWNLOAD_DIR: &str = "downloads"; // ダウンロードしたデータの保存先
-
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -89,23 +77,23 @@ async fn main() -> AppResult<()> {
     let filepath = &args[1];
 
     // ファイル読み込み
-    match Config::from_yaml_file(filepath) {
+    let config = Arc::new(match Config::from_yaml_file(filepath) {
         Ok(cfg) => {
             println!("API URL: {}", cfg.api_url);
             println!("RAW DATA DIR: {}", cfg.rawdata_dir);
-            // 必要に応じて他の値も使う
+            cfg
         }
         Err(e) => {
             eprintln!("設定ファイル読み込みエラー: {}", e);
             std::process::exit(1);
         }
-    }
+    });
 
     println!("====================");
     println!("Starting initialization");
     println!("====================");
 
-    let rules = RuleList::new(PROCESS_RULE_FILE_PATH).await?;
+    let rules = RuleList::new(&config.process_rule_file_path).await?;
 
     let deployed_files = Arc::new(DeployedMerchandise::new());
 
@@ -113,12 +101,12 @@ async fn main() -> AppResult<()> {
     let rsa_keypair = Arc::new(json_rsa::RSAKeyPair::new()?);
 
     // storage_client
-    let storage_client = StorageClient::new(API_URL);
+    let storage_client = StorageClient::new(&config.api_url);
 
     // ethereum_client
-    let eth_user = EthereumUser::new(ETH_USER_PUBKEY, ETH_USER_PRIVKEY)?;
+    let eth_user = EthereumUser::new(&config.eth_user_pubkey, &config.eth_user_privkey)?;
     let eth_client = Arc::new(eth_client::Ethereum::new(
-        RPC_URL,
+        &config.rpc_url,
         eth_user.get_account(),
         eth_user.get_private_key(),
     ));
@@ -130,7 +118,7 @@ async fn main() -> AppResult<()> {
     // upload pubkey to blockchain
     let pub_key_str = rsa_keypair.serialize_pubkey();
     let tx = eth_client
-        .upload_pubkey(PUBKEY_CONTRACT_ADDRESS, &pub_key_str)
+        .upload_pubkey(&config.pubkey_contract_address, &pub_key_str)
         .await;
     match tx {
         Ok(_) => {
@@ -152,10 +140,11 @@ async fn main() -> AppResult<()> {
 
     let db = Arc::clone(&deployed_files);
     let deploy_eth_client = Arc::clone(&eth_client);
+    let config_clone = Arc::clone(&config);
     let watcher_thread = tokio::spawn(async move {
         let rules = rules.clone();
         loop {
-            if let Some(file_path) = monitor_folder(RAWDATA_DIR).await {
+            if let Some(file_path) = monitor_folder(&config_clone.rawdata_dir).await {
                 println!("新しいファイルが作成されました: {:?}", file_path);
                 // ルールと照合する
                 for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
@@ -163,7 +152,7 @@ async fn main() -> AppResult<()> {
                     let metadata = matched_rules.parse_metadata().unwrap();
                     let processed_file = match process::caller::call_processer(
                         file_path.to_str().unwrap(),
-                        PROCESSED_DIR,
+                        &config_clone.processed_dir,
                         processer,
                     )
                     .await
@@ -178,7 +167,7 @@ async fn main() -> AppResult<()> {
                     let deploy_param = DeployParam::new(
                         contract_info.get_price(),
                         processed_file.clone(),
-                        PUBKEY_CONTRACT_ADDRESS.to_string(),
+                        config_clone.pubkey_contract_address.clone(),
                         contract_info.get_permissions(),
                         meta_info,
                     )
@@ -187,7 +176,7 @@ async fn main() -> AppResult<()> {
                     match deploy_eth_client.deploy_product(deploy_param).await {
                         Ok(address) => {
                             deploy_eth_client
-                                .register_product(IOT_MARKET_CONTRACT_ADDRESS, address)
+                                .register_product(&config_clone.iot_market_contract_address, address)
                                 .await
                                 .unwrap();
                             db.insert(address, processed_file).await;
@@ -229,6 +218,7 @@ async fn main() -> AppResult<()> {
             let eth_client = eth_client.clone();
             let key_pair = rsa_keypair.clone();
             let deployed_files = deployed_files.clone();
+            let config = config.clone();
 
             // ログが来たらスレッドを立てて処理
             tokio::spawn(async move {
@@ -288,7 +278,7 @@ async fn main() -> AppResult<()> {
                     println!("Downloading file...");
                     match storage_client.download_file(&access_key).await {
                         Ok(response) => {
-                            let download_path = format!("{}/{}", DOWNLOAD_DIR, response.file_name);
+                            let download_path = format!("{}/{}", config.download_dir.clone(), response.file_name);
                             // FIXME: ファイル形式に合わせて保存, simple-storageの改修が必要
                             tokio::fs::write(&download_path, response.file)
                                 .await
@@ -348,7 +338,8 @@ async fn main() -> AppResult<()> {
                                 }
                             };
                             // FIX: pubkeyの取得
-                            let factory = Address::from_str(PUBKEY_CONTRACT_ADDRESS).unwrap();
+                            let addr2 = config.pubkey_contract_address.clone();
+                            let factory = Address::from_str(&addr2).unwrap();
                             let buyer: H160 = (*buyer).into();
 
                             let pub_key: String =
