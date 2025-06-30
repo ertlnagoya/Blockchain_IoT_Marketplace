@@ -2,7 +2,7 @@
     {
         "target": ".*\\.txt$",
         "processer": {
-            "package": "",
+            "package": "Raw",
             "args": []
         },
         "metadata": {

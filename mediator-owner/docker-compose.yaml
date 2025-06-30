@@ -13,6 +13,7 @@ services:
       - ./Cargo.toml:/app/Cargo.toml:ro
       - ./Cargo.lock:/app/Cargo.lock
       - ./raw_data:/app/raw_data:ro
+      - ./processed_data:/app/processed_data
       - target:/app/target
     extra_hosts:
       - host.docker.internal:host-gateway

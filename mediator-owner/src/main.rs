@@ -149,9 +149,20 @@ async fn main() -> AppResult<()> {
         // config.process_rule_file_pathの内容をもとに，ファイル名に従った処理を実行
         // ルールと照合する
         for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
+            let processer = matched_rules.parse_processer().unwrap();
             let metadata = matched_rules.parse_metadata().unwrap();
-            // processorの実行は省略（ファイルパスをそのまま使用）
-            let processed_file = file_path.clone();
+            let processed_file = match process::caller::call_processer(
+                file_path.to_str().unwrap(),
+                &config_clone.processed_dir,
+                processer,
+            )
+            .await
+            {
+                Ok(output) => output,
+                Err(e) => {
+                    panic!("Error processing file: {}", e);
+                }
+            };
             // デプロイするファイルの情報を取得（ファイルサイズや作成日時など）
             let meta_info = metadata.create_metadata(&processed_file).unwrap();
             let contract_info = matched_rules.get_contract();
