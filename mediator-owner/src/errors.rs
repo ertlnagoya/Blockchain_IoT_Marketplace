@@ -28,6 +28,9 @@ pub enum AppError {
     #[error("Invalid data: {0}")]
     InvalidData(String),
 
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+
     #[error("Unexpected error: {0}")]
     Other(String),
 }

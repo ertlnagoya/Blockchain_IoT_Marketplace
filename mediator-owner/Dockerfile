@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     libopencv-dev \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/requirements.txt /tmp/

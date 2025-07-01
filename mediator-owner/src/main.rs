@@ -108,6 +108,74 @@ fn upload_json_to_ipfs<P: AsRef<Path>>(json_path: P) -> Option<String> {
     }
 }
 
+fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppResult<()> {
+    // JSONファイルを読み込む
+    let json_content = std::fs::read_to_string(&json_path)
+        .map_err(|e| errors::AppError::DatabaseError(format!("JSONファイル読み込み失敗: {}", e)))?;
+    let json_data: serde_json::Value = serde_json::from_str(&json_content)
+        .map_err(|e| errors::AppError::DatabaseError(format!("JSONパース失敗: {}", e)))?;
+
+    // 必要なフィールドを抽出
+    let start_timestamp = json_data.get("start_timestamp")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| errors::AppError::DatabaseError("start_timestampが見つかりません".to_string()))?;
+    let end_timestamp = json_data.get("end_timestamp")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| errors::AppError::DatabaseError("end_timestampが見つかりません".to_string()))?;
+    let location = json_data.get("location")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| errors::AppError::DatabaseError("locationが見つかりません".to_string()))?;
+    let latitude = location.get("latitude")
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| errors::AppError::DatabaseError("latitudeが見つかりません".to_string()))?;
+    let longitude = location.get("longitude")
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| errors::AppError::DatabaseError("longitudeが見つかりません".to_string()))?;
+
+    // SQL文を組み立て
+    let sql = format!(
+        "INSERT INTO ipfs_records (cid, start_timestamp, end_timestamp, location) \
+        VALUES ('{}', '{}', '{}', ST_SetSRID(ST_MakePoint({}, {}), 4326)) \
+        ON CONFLICT (cid) DO NOTHING;",
+        cid, start_timestamp, end_timestamp, longitude, latitude
+    );
+
+    // psqlコマンドで実行
+    let output = Command::new("psql")
+        .arg("-h")
+        .arg("host.docker.internal")
+        .arg("-U")
+        .arg("dev")
+        .arg("-d")
+        .arg("mydb")
+        .arg("-c")
+        .arg(&sql)
+        .env("PGPASSWORD", "devpassword")
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            println!("ipfs_recordsテーブルにデータを挿入しました");
+            Ok(())
+        }
+        Ok(output) => {
+            eprintln!(
+                "⚠️ PostgreSQLへの挿入失敗: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            Err(errors::AppError::DatabaseError(
+                "PostgreSQLへの挿入失敗".to_string(),
+            ))
+        }
+        Err(e) => {
+            eprintln!("❌ PostgreSQLコマンド実行エラー: {}", e);
+            Err(errors::AppError::DatabaseError(
+                "PostgreSQLコマンド実行エラー".to_string(),
+            ))
+        }
+    }
+}
+
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -294,6 +362,17 @@ async fn main() -> AppResult<()> {
                         // IPFSにアップロード
                         let cid = upload_json_to_ipfs(&processed_json_path);
                         println!("Uploaded JSON to IPFS with CID: {:?}", cid);
+
+                        // PostgreSQLにアップロード
+                        if let Some(cid) = cid {
+                            if let Err(e) = upload_json_info_to_postgres(&processed_json_path, &cid) {
+                                eprintln!("Failed to upload JSON info to PostgreSQL: {}", e);
+                            } else {
+                                println!("JSON info uploaded to PostgreSQL successfully");
+                            }
+                        } else {
+                            eprintln!("Failed to upload JSON to IPFS, skipping PostgreSQL upload");
+                        }
                     }
                 }       
             }
