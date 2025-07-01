@@ -172,6 +172,21 @@ async fn main() -> AppResult<()> {
                             continue;
                         }
                     };
+
+                    // JSONの内容をデシリアライズ
+                    let mut json_data: serde_json::Value = match serde_json::from_str(&json_content) {
+                        Ok(data) => data,
+                        Err(e) => {
+                            eprintln!("Failed to parse json file {:?}: {}", path, e);
+                            continue;
+                        }
+                    };
+                    let exist_person = match json_data.get("person_ids") {
+                        Some(ids) if ids.is_object() && !ids.as_object().unwrap().is_empty() => true,
+                        _ => false,
+                    };
+                    json_data["exist_person"] = serde_json::Value::Bool(exist_person);
+                    json_data.as_object_mut().map(|obj| obj.remove("person_ids"));
                     
                     for matched_rules in rules.iter().filter(|rule| rule.is_matched(&mp4_path)) {
                         let processer = matched_rules.parse_processer().unwrap();
@@ -207,6 +222,8 @@ async fn main() -> AppResult<()> {
                                     .await
                                     .unwrap();
                                 db.insert(address, processed_file.clone()).await;
+                                json_data["address"] = serde_json::Value::String(format!("{:?}", address));
+                                json_data["owner"] = serde_json::Value::String(format!("{:?}", deploy_eth_client.account));
                                 println!(
                                     "Product deployed successfully with address: {:?} for file {:?}",
                                     address,
@@ -219,6 +236,15 @@ async fn main() -> AppResult<()> {
                                     processed_file, e
                                 );
                                 continue; // Skip if deployment fails
+                            }
+                        }
+                        // JSONをprocessed_dirに出力
+                        let processed_json_path = Path::new(&config_clone.processed_dir)
+                            .join(path.file_name().unwrap());
+                        match fs::write(&processed_json_path, serde_json::to_string_pretty(&json_data).unwrap()) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                eprintln!("Failed to write processed JSON: {}", e);
                             }
                         }
                     }
