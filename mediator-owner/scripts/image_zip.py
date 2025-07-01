@@ -41,8 +41,9 @@ def extract_frame(movie_path, json_data, output_dir):
         cv2.imwrite(output_frame_path, frame)
 
     # 一時ディレクトリをzipにまとめる
-    tmp = shutil.make_archive(os.path.join(output_dir, movie_name_without_ext), 'zip', root_dir=temp_dir)
-    print(f"フレームを抽出し、zipにまとめました: {tmp}")
+    zip_path = shutil.make_archive(os.path.join(output_dir, movie_name_without_ext), 'zip', root_dir=temp_dir)
+    zip_relative_path = os.path.relpath(zip_path, start="/app")
+    print(zip_relative_path)
 
     # 一時ディレクトリを削除
     # shutil.rmtree(temp_dir)

@@ -83,9 +83,9 @@ fn check_script_existance(file_path: &str) -> io::Result<&Path> {
 
 /// 標準出力の文字列からファイルパスを抽出し、`PathBuf` として返す関数
 fn extract_output_path(stdout: &str) -> Option<PathBuf> {
-    let re = Regex::new(r".*\.(mp4|jpg|txt)$").unwrap();
+    let re = Regex::new(r".*\.(mp4|jpg|txt|zip)$").unwrap();
 
-    stdout
+    let file_path = stdout
         .lines()
         .rev() // 出力を逆順に確認
         .find_map(|line| {
@@ -95,5 +95,6 @@ fn extract_output_path(stdout: &str) -> Option<PathBuf> {
             } else {
                 None
             }
-        })
+        });
+    file_path
 }

@@ -164,10 +164,6 @@ async fn main() -> AppResult<()> {
                         eprintln!("Corresponding mp4 file does not exist for json: {:?}", path);
                         continue;
                     }
-                    println!(
-                        "Found json: {:?}, corresponding mp4: {:?}",
-                        path, mp4_path
-                    );
                     // ここでjsonファイルを読み込む処理を追加
                     let json_content = match fs::read_to_string(&path) {
                         Ok(content) => content,
@@ -176,15 +172,10 @@ async fn main() -> AppResult<()> {
                             continue;
                         }
                     };
-                    println!("Loaded JSON content: {}", json_content);
                     
                     for matched_rules in rules.iter().filter(|rule| rule.is_matched(&mp4_path)) {
                         let processer = matched_rules.parse_processer().unwrap();
                         let metadata = matched_rules.parse_metadata().unwrap();
-                        println!(
-                            "Matched rule: {:?}, Processer: {:?}, Metadata: {:?}",
-                            matched_rules, processer, metadata
-                        );
                         let processed_file = match process::caller::call_processer(
                             mp4_path.to_str().unwrap(),
                             &config_clone.processed_dir,
@@ -197,66 +188,44 @@ async fn main() -> AppResult<()> {
                                 panic!("Error processing file: {}", e);
                             }
                         };
-                        println!("Processed file: {:?}", processed_file);
-                    }
-                }
-            }
-        }
-        let rules = rules.clone();
-        let file_path = PathBuf::from(&config_clone.text_file_path);
-        println!("新しいファイルが作成されました: {:?}", file_path);
-        // config.process_rule_file_pathの内容をもとに，ファイル名に従った処理を実行
-        // ルールと照合する
-        for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
-            let processer = matched_rules.parse_processer().unwrap();
-            let metadata = matched_rules.parse_metadata().unwrap();
-            let processed_file = match process::caller::call_processer(
-                file_path.to_str().unwrap(),
-                &config_clone.processed_dir,
-                processer,
-            )
-            .await
-            {
-                Ok(output) => output,
-                Err(e) => {
-                    panic!("Error processing file: {}", e);
-                }
-            };
-            // デプロイするファイルの情報を取得（ファイルサイズや作成日時など）
-            let meta_info = metadata.create_metadata(&processed_file).unwrap();
-            let contract_info = matched_rules.get_contract();
-            let deploy_param = DeployParam::new(
-                contract_info.get_price(),
-                processed_file.clone(),
-                config_clone.pubkey_contract_address.clone(),
-                contract_info.get_permissions(),
-                meta_info,
-            )
-            .await
-            .unwrap();
-            match deploy_eth_client.deploy_product(deploy_param).await {
-                Ok(address) => {
-                    deploy_eth_client
-                        .register_product(&config_clone.iot_market_contract_address, address)
+                        // デプロイするファイルの情報を取得（ファイルサイズや作成日時など）
+                        let meta_info = metadata.create_metadata(&processed_file).unwrap();
+                        let contract_info = matched_rules.get_contract();
+                        let deploy_param = DeployParam::new(
+                            contract_info.get_price(),
+                            processed_file.clone(),
+                            config_clone.pubkey_contract_address.clone(),
+                            contract_info.get_permissions(),
+                            meta_info,
+                        )
                         .await
                         .unwrap();
-                    db.insert(address, processed_file).await;
-                    println!(
-                        "Product deployed successfully with address: {:?}",
-                        address
-                    );
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Error deploying product for file {:?}: {}",
-                        processed_file, e
-                    );
-                    continue; // Skip if deployment fails
-                }
+                        match deploy_eth_client.deploy_product(deploy_param).await {
+                            Ok(address) => {
+                                deploy_eth_client
+                                    .register_product(&config_clone.iot_market_contract_address, address)
+                                    .await
+                                    .unwrap();
+                                db.insert(address, processed_file.clone()).await;
+                                println!(
+                                    "Product deployed successfully with address: {:?} for file {:?}",
+                                    address,
+                                    processed_file
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "Error deploying product for file {:?}: {}",
+                                    processed_file, e
+                                );
+                                continue; // Skip if deployment fails
+                            }
+                        }
+                    }
+                }       
             }
-            println!("File deployed successfully");
         }
-        time::sleep(Duration::from_secs(2)).await;
+        println!("File watcher initialized for directory: {}", raw_data_dir);
     });
 
     // watch blockchain
