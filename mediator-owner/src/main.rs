@@ -52,6 +52,7 @@ pub struct Config {
     pub iot_market_contract_address: String,
     pub process_rule_file_path: String,
     pub rawdata_dir: String,
+    pub camra_id: String,
     pub processed_dir: String,
     pub download_dir: String,
     pub text_file_path: String,
@@ -143,6 +144,43 @@ async fn main() -> AppResult<()> {
     let deploy_eth_client = Arc::clone(&eth_client);
     let config_clone = Arc::clone(&config);
     let watcher_thread = tokio::spawn(async move {
+        let raw_data_dir = &config_clone.rawdata_dir;
+        let entries = match fs::read_dir(raw_data_dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!("Failed to read raw data dir: {}", e);
+                return;
+            }
+        };
+
+        let re = regex::Regex::new(&format!(r"^{}_movie_([0-9]+)\.json$", config_clone.camra_id)).unwrap();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                if let Some(caps) = re.captures(file_name) {
+                    let mut mp4_path = path.clone();
+                    mp4_path.set_extension("mp4");
+                    if !mp4_path.exists() {
+                        eprintln!("Corresponding mp4 file does not exist for json: {:?}", path);
+                        continue;
+                    }
+                    println!(
+                        "Found json: {:?}, corresponding mp4: {:?}",
+                        path, mp4_path
+                    );
+                    // ここでjsonファイルを読み込む処理を追加
+                    let json_content = match fs::read_to_string(&path) {
+                        Ok(content) => content,
+                        Err(e) => {
+                            eprintln!("Failed to read json file {:?}: {}", path, e);
+                            continue;
+                        }
+                    };
+                    println!("Loaded JSON content: {}", json_content);
+                    // 必要に応じてパースや追加処理を行う
+                }
+            }
+        }
         let rules = rules.clone();
         let file_path = PathBuf::from(&config_clone.text_file_path);
         println!("新しいファイルが作成されました: {:?}", file_path);
@@ -182,6 +220,10 @@ async fn main() -> AppResult<()> {
                         .await
                         .unwrap();
                     db.insert(address, processed_file).await;
+                    println!(
+                        "Product deployed successfully with address: {:?}",
+                        address
+                    );
                 }
                 Err(e) => {
                     eprintln!(
@@ -232,6 +274,7 @@ async fn main() -> AppResult<()> {
                 // 購入処理発生 & 自身がデータ提供者の場合
                 if owner == &account_address && event == &ethereum::topic::topic_purchase() {
                     println!("Your Product is bought by {}", buyer);
+                    println!("Event emitter is ... {:?}", event_emitter);
                     let upload_file_path = deployed_files.get(&event_emitter).await.unwrap();
                     // upload file to api
                     let path = match storage_client.post_file(upload_file_path).await {
