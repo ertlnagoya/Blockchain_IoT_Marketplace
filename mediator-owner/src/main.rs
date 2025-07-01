@@ -42,6 +42,9 @@ use tokio::time;
 
 use serde::Deserialize;
 
+use std::process::Command;
+
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub api_url: String,
@@ -65,6 +68,46 @@ impl Config {
         Ok(config)
     }
 }
+
+/// JSONファイルをIPFSへアップロード
+fn upload_json_to_ipfs<P: AsRef<Path>>(json_path: P) -> Option<String> {
+    let path_str = json_path.as_ref().to_str().unwrap();
+
+    let output = Command::new("curl")
+        .arg("-s")
+        .arg("-X")
+        .arg("POST")
+        .arg("-F")
+        .arg(format!("file=@{}", path_str))
+        .arg("http://host.docker.internal:5001/api/v0/add")
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            // IPFSのCIDを取得
+            let v: serde_json::Value = serde_json::from_slice(&output.stdout)
+                .expect("Failed to parse IPFS response");
+            let cid = v.get("Hash")
+                .expect("No Hash field in IPFS response")
+                .as_str()
+                .expect("Hash field is not a string")
+                .to_string();
+            Some(cid)
+        }
+        Ok(output) => {
+            eprintln!(
+                "⚠️ アップロード失敗: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!("❌ curlコマンド実行エラー: {}", e);
+            None
+        }
+    }
+}
+
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -247,6 +290,10 @@ async fn main() -> AppResult<()> {
                                 eprintln!("Failed to write processed JSON: {}", e);
                             }
                         }
+                        
+                        // IPFSにアップロード
+                        let cid = upload_json_to_ipfs(&processed_json_path);
+                        println!("Uploaded JSON to IPFS with CID: {:?}", cid);
                     }
                 }       
             }
