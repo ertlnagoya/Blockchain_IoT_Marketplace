@@ -177,7 +177,28 @@ async fn main() -> AppResult<()> {
                         }
                     };
                     println!("Loaded JSON content: {}", json_content);
-                    // 必要に応じてパースや追加処理を行う
+                    
+                    for matched_rules in rules.iter().filter(|rule| rule.is_matched(&mp4_path)) {
+                        let processer = matched_rules.parse_processer().unwrap();
+                        let metadata = matched_rules.parse_metadata().unwrap();
+                        println!(
+                            "Matched rule: {:?}, Processer: {:?}, Metadata: {:?}",
+                            matched_rules, processer, metadata
+                        );
+                        let processed_file = match process::caller::call_processer(
+                            mp4_path.to_str().unwrap(),
+                            &config_clone.processed_dir,
+                            processer,
+                        )
+                        .await
+                        {
+                            Ok(output) => output,
+                            Err(e) => {
+                                panic!("Error processing file: {}", e);
+                            }
+                        };
+                        println!("Processed file: {:?}", processed_file);
+                    }
                 }
             }
         }

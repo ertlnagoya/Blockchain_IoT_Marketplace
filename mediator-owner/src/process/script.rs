@@ -5,7 +5,9 @@ pub enum ScriptFile {
     CompressVideo,
     ExtractImage,
     InferHumanCount,
-    Raw
+    Raw,
+    Register,
+    ImageZip
 }
 
 impl ScriptFile {
@@ -15,6 +17,8 @@ impl ScriptFile {
             ScriptFile::ExtractImage => "extract_frame.py",
             ScriptFile::InferHumanCount => "count_people.py",
             ScriptFile::Raw => "raw.py",
+            ScriptFile::Register => "register.py",
+            ScriptFile::ImageZip => "image_zip.py",
         }
     }
 }
@@ -28,6 +32,8 @@ impl FromStr for ScriptFile {
             "ExtractImage" => Ok(ScriptFile::ExtractImage),
             "InferHumanCount" => Ok(ScriptFile::InferHumanCount),
             "Raw" => Ok(ScriptFile::Raw),
+            "Register" => Ok(ScriptFile::Register),
+            "ImageZip" => Ok(ScriptFile::ImageZip),
             _ => unimplemented!("Invalid script file name: {}", s),
         }
     }
