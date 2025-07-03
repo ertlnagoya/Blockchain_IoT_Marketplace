@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { ethers } from 'ethers';
+	import { Merchandise__factory } from '../types/typechain-types/index.js';
+	
 	let queryResult: any = null;
 	let startTime: string = '2025-06-30T08:00:00';
 	let endTime: string = '2025-06-30T12:20:00';
@@ -9,6 +12,45 @@
 	let filterByLocation: boolean = false;
 	let filterByPeople: boolean = false;
 	let peopleExist: boolean = true;
+
+	// MetaMaskに接続する関数
+	const connectToMetaMask = async () => {
+		const windowProvider = (window as any).ethereum;
+
+		if (windowProvider == null) {
+			throw new Error('MetaMask not found');
+		}
+		try {
+			const provider = await new ethers.BrowserProvider(windowProvider);
+			const signer = await provider.getSigner();
+			return { provider, signer };
+		} catch (error) {
+			throw new Error('Error while connecting to MetaMask');
+		}
+	};
+
+	// 購入機能
+	const purchase = async (merchandiseData: any) => {
+		try {
+			const { provider, signer } = await connectToMetaMask();
+			const merchandise = Merchandise__factory.connect(merchandiseData.address, signer);
+			
+			if (signer) {
+				const transactionResponse = await merchandise.purchase({
+					value: ethers.parseEther(merchandiseData.price || '0.01')
+				});
+				
+				alert('購入処理を開始しました。トランザクションの確認をお待ちください...');
+				await transactionResponse.wait(1);
+				alert('購入が完了しました！');
+			} else {
+				throw new Error('MetaMaskに接続してください');
+			}
+		} catch (error: any) {
+			alert(`購入エラー: ${error.message}`);
+			console.error('Purchase error:', error);
+		}
+	};
 
 	async function executeSearch() {
 		// ベースクエリを構築
@@ -221,6 +263,7 @@
 						<th class="px-2 py-1 text-black">距離 (m)</th>
 					{/if}
 					<th class="px-2 py-1 text-black">IPFSデータ</th>
+					<th class="px-2 py-1 text-black">アクション</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -253,6 +296,21 @@
 								{/if}
 							{:else}
 								<span class="text-gray-500">データなし</span>
+							{/if}
+						</td>
+						<td class="px-2 py-1 text-black">
+							{#if row.ipfs_data && row.ipfs_data.address && !row.ipfs_data.error}
+								<button 
+									class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
+									on:click={() => purchase(row.ipfs_data)}
+								>
+									購入
+								</button>
+								<div class="text-xs mt-1">
+									{row.ipfs_data.price || '0.01'} ETH
+								</div>
+							{:else}
+								<span class="text-gray-500 text-xs">購入不可</span>
 							{/if}
 						</td>
 					</tr>
