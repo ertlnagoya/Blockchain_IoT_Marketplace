@@ -28,10 +28,9 @@ async function fetchIPFSContent(cid: string): Promise<any> {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-    const { query, fetchIPFS = false } = await request.json();
+    const { query } = await request.json();
 
     // PostgreSQLに接続してクエリを実行
-
     const client = new Client({
         user: 'dev',
         host: 'host.docker.internal',
@@ -44,8 +43,8 @@ export const POST: RequestHandler = async ({ request }) => {
         await client.connect();
         const { rows: result } = await client.query(query);
         
-        // fetchIPFSがtrueの場合、CIDカラムがあるかチェックしてIPFSからデータを取得
-        if (fetchIPFS && result.length > 0) {
+        // 常にIPFSからデータを取得
+        if (result.length > 0) {
             const enrichedResult = await Promise.all(
                 result.map(async (row: any) => {
                     // CIDを含む可能性のあるカラムを探す
@@ -75,8 +74,9 @@ export const POST: RequestHandler = async ({ request }) => {
             });
         }
         
+        // データがない場合は空の配列を返す
         await client.end();
-        return new Response(JSON.stringify(result), {
+        return new Response(JSON.stringify([]), {
             headers: { 'Content-Type': 'application/json' }
         });
         
