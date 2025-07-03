@@ -7,12 +7,13 @@
 	let radius: string = '50'; // デフォルト50m
 	let filterByPeople: boolean = false;
 	let peopleExist: boolean = true;
+	let fetchIPFSData: boolean = false;
 
 	async function sendSqlQuery() {
 		const response = await fetch('/api/sql-query', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ query: 'SELECT * FROM ipfs_records;' })
+			body: JSON.stringify({ query: 'SELECT * FROM ipfs_records;', fetchIPFS: fetchIPFSData })
 		});
 		queryResult = await response.json();
 	}
@@ -34,7 +35,7 @@
 		const response = await fetch('/api/sql-query', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ query })
+			body: JSON.stringify({ query, fetchIPFS: fetchIPFSData })
 		});
 		queryResult = await response.json();
 	}
@@ -69,13 +70,24 @@
 		const response = await fetch('/api/sql-query', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ query })
+			body: JSON.stringify({ query, fetchIPFS: fetchIPFSData })
 		});
 		queryResult = await response.json();
 	}
 </script>
 
 <div class="mt-8 flex flex-col items-center">
+	<div class="mb-4">
+		<label class="flex items-center space-x-2">
+			<input
+				type="checkbox"
+				bind:checked={fetchIPFSData}
+				class="rounded"
+			/>
+			<span class="text-sm">IPFSからJSONデータを取得</span>
+		</label>
+	</div>
+	
 	<button class="px-4 py-2 bg-blue-600 text-white rounded" on:click={sendSqlQuery}>
 		SQLクエリを送信
 	</button>
@@ -232,6 +244,9 @@
 					<th class="px-2 py-1 text-black">終了時刻</th>
 					<th class="px-2 py-1 text-black">位置情報</th>
 					<th class="px-2 py-1 text-black">人の存在</th>
+					{#if fetchIPFSData}
+						<th class="px-2 py-1 text-black">IPFSデータ</th>
+					{/if}
 				</tr>
 			</thead>
 			<tbody>
@@ -242,6 +257,27 @@
 						<td class="px-2 py-1 text-black">{row.end_timestamp}</td>
 						<td class="px-2 py-1 text-black">{row.location}</td>
 						<td class="px-2 py-1 text-black">{row.exist_people ? 'あり' : 'なし'}</td>
+						{#if fetchIPFSData}
+							<td class="px-2 py-1 text-black">
+								{#if row.ipfs_data}
+									{#if row.ipfs_data.error}
+										<span class="text-red-600">エラー: {row.ipfs_data.error}</span>
+									{:else if row.ipfs_data.type === 'text'}
+										<details>
+											<summary class="cursor-pointer text-blue-600">テキストデータ</summary>
+											<pre class="mt-2 text-xs">{row.ipfs_data.content}</pre>
+										</details>
+									{:else}
+										<details>
+											<summary class="cursor-pointer text-blue-600">JSONデータ</summary>
+											<pre class="mt-2 text-xs">{JSON.stringify(row.ipfs_data, null, 2)}</pre>
+										</details>
+									{/if}
+								{:else}
+									<span class="text-gray-500">データなし</span>
+								{/if}
+							</td>
+						{/if}
 					</tr>
 				{/each}
 			</tbody>

@@ -31,7 +31,6 @@ export const POST: RequestHandler = async ({ request }) => {
     const { query, fetchIPFS = false } = await request.json();
 
     // PostgreSQLに接続してクエリを実行
-
     const client = new Client({
         user: 'dev',
         host: 'host.docker.internal',

@@ -64,6 +64,7 @@ CREATE TABLE ipfs_records (
     cid TEXT PRIMARY KEY,                         -- IPFSのCID（文字列）
     start_timestamp TIMESTAMP NOT NULL,           -- 開始時刻
     end_timestamp TIMESTAMP NOT NULL,             -- 終了時刻
-    location GEOGRAPHY(POINT, 4326) NOT NULL      -- 緯度・経度 (PostGISで空間検索も可能)
+    location GEOGRAPHY(POINT, 4326) NOT NULL,     -- 緯度・経度 (PostGISで空間検索も可能)
+    exist_people BOOL NOT NULL
 );
 ```
