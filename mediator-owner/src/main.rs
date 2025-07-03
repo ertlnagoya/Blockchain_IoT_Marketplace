@@ -131,13 +131,16 @@ fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppR
     let longitude = location.get("longitude")
         .and_then(|v| v.as_f64())
         .ok_or_else(|| errors::AppError::DatabaseError("longitudeが見つかりません".to_string()))?;
+    let exist_people = json_data.get("exist_person")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| errors::AppError::DatabaseError("exist_personが見つかりません".to_string()))?;
 
     // SQL文を組み立て
     let sql = format!(
-        "INSERT INTO ipfs_records (cid, start_timestamp, end_timestamp, location) \
-        VALUES ('{}', '{}', '{}', ST_SetSRID(ST_MakePoint({}, {}), 4326)) \
+        "INSERT INTO ipfs_records (cid, start_timestamp, end_timestamp, location, exist_people) \
+        VALUES ('{}', '{}', '{}', ST_SetSRID(ST_MakePoint({}, {}), 4326), '{}') \
         ON CONFLICT (cid) DO NOTHING;",
-        cid, start_timestamp, end_timestamp, longitude, latitude
+        cid, start_timestamp, end_timestamp, longitude, latitude, exist_people
     );
 
     // psqlコマンドで実行

@@ -5,6 +5,8 @@
 	let latitude: string = '35.15430131582339';
 	let longitude: string = '136.9700924892541';
 	let radius: string = '50'; // デフォルト50m
+	let filterByPeople: boolean = false;
+	let peopleExist: boolean = true;
 
 	async function sendSqlQuery() {
 		const response = await fetch('/api/sql-query', {
@@ -21,7 +23,14 @@
 			return;
 		}
 
-		const query = `SELECT * FROM ipfs_records WHERE start_timestamp >= '${startTime}' AND end_timestamp <= '${endTime}';`;
+		let query = `SELECT * FROM ipfs_records WHERE start_timestamp >= '${startTime}' AND end_timestamp <= '${endTime}'`;
+		
+		if (filterByPeople) {
+			query += ` AND exist_people = ${peopleExist}`;
+		}
+		
+		query += ';';
+		
 		const response = await fetch('/api/sql-query', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -42,15 +51,20 @@
 
 		// PostGIS GEOGRAPHY型を使用したシンプルなクエリ
 		const radiusMeters = parseFloat(radius);
-		const query = `
+		let query = `
 			SELECT *, 
 				ST_Distance(location, ST_GeogFromText('POINT(${longitude} ${latitude})')) AS distance
 			FROM ipfs_records 
 			WHERE start_timestamp >= '${startTime}' 
 				AND end_timestamp <= '${endTime}'
 				AND ST_DWithin(location, ST_GeogFromText('POINT(${longitude} ${latitude})'), ${radiusMeters})
-			ORDER BY distance;
 		`;
+		
+		if (filterByPeople) {
+			query += ` AND exist_people = ${peopleExist}`;
+		}
+		
+		query += ' ORDER BY distance;';
 		
 		const response = await fetch('/api/sql-query', {
 			method: 'POST',
@@ -86,6 +100,36 @@
 					class="px-3 py-2 border rounded text-black"
 				/>
 			</div>
+		</div>
+		<div class="flex items-center space-x-4">
+			<label class="flex items-center space-x-2">
+				<input
+					type="checkbox"
+					bind:checked={filterByPeople}
+					class="rounded"
+				/>
+				<span class="text-sm">人の存在で絞り込む</span>
+			</label>
+			{#if filterByPeople}
+				<label class="flex items-center space-x-2">
+					<input
+						type="radio"
+						bind:group={peopleExist}
+						value={true}
+						name="peopleExist"
+					/>
+					<span class="text-sm">人がいる</span>
+				</label>
+				<label class="flex items-center space-x-2">
+					<input
+						type="radio"
+						bind:group={peopleExist}
+						value={false}
+						name="peopleExist"
+					/>
+					<span class="text-sm">人がいない</span>
+				</label>
+			{/if}
 		</div>
 		<button class="px-4 py-2 bg-green-600 text-white rounded" on:click={searchByTimeRange}>
 			時刻範囲で検索
@@ -144,6 +188,36 @@
 				/>
 			</div>
 		</div>
+		<div class="flex items-center space-x-4">
+			<label class="flex items-center space-x-2">
+				<input
+					type="checkbox"
+					bind:checked={filterByPeople}
+					class="rounded"
+				/>
+				<span class="text-sm">人の存在で絞り込む</span>
+			</label>
+			{#if filterByPeople}
+				<label class="flex items-center space-x-2">
+					<input
+						type="radio"
+						bind:group={peopleExist}
+						value={true}
+						name="peopleExist"
+					/>
+					<span class="text-sm">人がいる</span>
+				</label>
+				<label class="flex items-center space-x-2">
+					<input
+						type="radio"
+						bind:group={peopleExist}
+						value={false}
+						name="peopleExist"
+					/>
+					<span class="text-sm">人がいない</span>
+				</label>
+			{/if}
+		</div>
 		<button class="px-4 py-2 bg-purple-600 text-white rounded" on:click={searchByTimeAndLocation}>
 			時刻と場所で検索
 		</button>
@@ -157,6 +231,7 @@
 					<th class="px-2 py-1 text-black">開始時刻</th>
 					<th class="px-2 py-1 text-black">終了時刻</th>
 					<th class="px-2 py-1 text-black">位置情報</th>
+					<th class="px-2 py-1 text-black">人の存在</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -166,6 +241,7 @@
 						<td class="px-2 py-1 text-black">{row.start_timestamp}</td>
 						<td class="px-2 py-1 text-black">{row.end_timestamp}</td>
 						<td class="px-2 py-1 text-black">{row.location}</td>
+						<td class="px-2 py-1 text-black">{row.exist_people ? 'あり' : 'なし'}</td>
 					</tr>
 				{/each}
 			</tbody>
