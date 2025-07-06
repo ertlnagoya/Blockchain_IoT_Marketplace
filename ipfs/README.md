@@ -40,3 +40,31 @@ docker volume ls
 docker volume rm ipfs_ipfs_data
 docker volume rm ipfs_ipfs_staging
 ```
+
+## PostgreSQLへのアクセス
+
+```bash
+docker exec -it postgres_db psql -U dev -d mydb
+```
+
+PostGISが有効に
+
+```sql
+-- PostGIS拡張を有効化
+CREATE EXTENSION postgis;
+
+-- バージョン確認
+SELECT PostGIS_Full_Version();
+```
+
+テーブル作成
+
+```sql
+CREATE TABLE ipfs_records (
+    cid TEXT PRIMARY KEY,                         -- IPFSのCID（文字列）
+    start_timestamp TIMESTAMP NOT NULL,           -- 開始時刻
+    end_timestamp TIMESTAMP NOT NULL,             -- 終了時刻
+    location GEOGRAPHY(POINT, 4326) NOT NULL,     -- 緯度・経度 (PostGISで空間検索も可能)
+    exist_people BOOL NOT NULL
+);
+```

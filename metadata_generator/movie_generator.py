@@ -4,16 +4,19 @@ import os
 import glob
 import re
 from collections import namedtuple, defaultdict
+import datetime
 import random
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import json
 from concurrent.futures import as_completed
 import tempfile
+from geopy.distance import distance
+from geopy.point import Point
 
 # 画像が保存されているディレクトリ（再帰的に探索）
 frames_dir = r'C:\Users\yuichiro.yasue\Downloads\mevid-v1-bbox-test\bbox_test'
-output_dir = "output/"
+output_dir = "outputs/output"
 frames_per_second = 30  # Assuming 30 FPS
 output_movie_seconds = 60 * 5  # 5 minutes
 
@@ -277,6 +280,36 @@ def main():
         )
         movie_generator.generate_movies()
         print(f"Finished processing camera {camera_id}.", flush=True)
+    
+    initial_location = Point(35.1534, 136.9668)  # 初期位置を設定
+    locations = {}
+    for i, camera_id in enumerate(camera2bbox_infos.keys()):
+        if i == 0:
+            locations[camera_id] = initial_location
+        point = distance(meters = i % 3 * 100).destination(point=initial_location, bearing=0)
+        point = distance(meters = i // 3 * 100).destination(point=point, bearing=90)
+        locations[camera_id] = point
+    
+    start_time = datetime.datetime(2025, 6, 30, 8, 0, 0)
+    json_path_pattern = re.compile(r"(\d+)_movie_(\d+)\.json$")
+    for json_path in glob.glob(os.path.join(output_dir, "*.json")):
+        result = json_path_pattern.match(os.path.basename(json_path))
+        assert result is not None, f"Failed to match JSON path: {json_path}"
+        camera_id = result.group(1)
+        movie_index = result.group(2)
+        timestamp = start_time + datetime.timedelta(seconds=int(movie_index) * output_movie_seconds)
+    
+        with open(json_path, 'r') as f:
+            json_data = json.load(f)
+        json_data['start_timestamp'] = timestamp.isoformat()
+        json_data['end_timestamp'] = (timestamp + datetime.timedelta(seconds=output_movie_seconds)).isoformat()
+        json_data['location'] = {
+            'latitude': locations[camera_id].latitude,
+            'longitude': locations[camera_id].longitude
+        }
+        with open(json_path, 'w') as f:
+            json.dump(json_data, f, indent=2)
+
 
 if __name__ == "__main__":
     main()

@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
   
   postgres:
-    image: postgres:15
+    image: postgis/postgis:15-3.4
     container_name: postgres_db
     environment:
       POSTGRES_USER: dev

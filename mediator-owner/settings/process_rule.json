@@ -1,9 +1,12 @@
 [
     {
-        "target": ".*\\.mp4$",
+        "target": ".*\\.txt$",
         "processer": {
-            "package": "CompressVideo",
+            "package": "Raw",
             "args": []
+        },
+        "register": {
+            "package": "Register"
         },
         "metadata": {
             "package": "Basic",
@@ -13,15 +16,18 @@
             "permissions": [
                 "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
             ],
-            "price": 200,
+            "price": 1,
             "distribution_service": "simple-storage"
         }
     },
     {
-        "target": ".*\\.mp4$",
+        "target": "^[0-9]+_movie_[0-9]+\\.mp4$",
         "processer": {
-            "package": "ExtractImage",
+            "package": "ImageZip",
             "args": []
+        },
+        "register": {
+            "package": "Register"
         },
         "metadata": {
             "package": "Basic",
@@ -31,25 +37,7 @@
             "permissions": [
                 "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
             ],
-            "price": 100,
-            "distribution_service": "simple-storage"
-        }
-    },
-    {
-        "target": ".*\\.mp4$",
-        "processer": {
-            "package": "InferHumanCount",
-            "args": []
-        },
-        "metadata": {
-            "package": "Basic",
-            "args": []
-        },
-        "contract": {
-            "permissions": [
-                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-            ],
-            "price": 50,
+            "price": 1,
             "distribution_service": "simple-storage"
         }
     }

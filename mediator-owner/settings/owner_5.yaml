@@ -1,0 +1,12 @@
+api_url: http://host.docker.internal:3000
+rpc_url: http://host.docker.internal:8545
+eth_user_pubkey: '0x976EA74026E726554dB657fA54763abd0C3a0aa9'
+eth_user_privkey: '0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e'
+pubkey_contract_address: '0x5FbDB2315678afecb367f032d93F642f64180aa3'
+iot_market_contract_address: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
+process_rule_file_path: settings/process_rule.json
+rawdata_dir: raw_data/output
+camra_id: '340'
+processed_dir: processed_data
+download_dir: downloads
+text_file_path: raw_data/test_1.txt

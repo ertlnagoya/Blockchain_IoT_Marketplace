@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  owner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owner
+    volumes:
+      - ./src:/app/src:ro
+      - ./settings:/app/settings:ro
+      - ./scripts:/app/scripts:ro
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ./Cargo.lock:/app/Cargo.lock
+      - ./raw_data:/app/raw_data:ro
+      - ./processed_data:/app/processed_data
+      - target:/app/target
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    working_dir: /app
+    entrypoint: ["sleep", "infinity"]
+
+volumes:
+  target:

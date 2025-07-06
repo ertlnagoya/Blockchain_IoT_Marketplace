@@ -7,7 +7,7 @@ use tokio::process::Command;
 
 use super::script::ScriptFile;
 
-const SCRIPT_DIR: &str = "/workspaces/mediator-owner/scripts/";
+const SCRIPT_DIR: &str = "scripts/";
 
 pub async fn call_processer(
     input_file: &str,
@@ -34,7 +34,13 @@ pub async fn call_processer(
     }
 
     let script_file = file_path.join(script.get_script_file_name());
-    let output = Command::new("python")
+    if !script_file.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Script file not found: {}", script_file.display()),
+        ));
+    }
+    let output = Command::new("python3")
         .arg(script_file)
         .arg(format!("--input_video={}", input_file))
         .arg(format!("--output_dir={}", output_dir))
@@ -77,9 +83,9 @@ fn check_script_existance(file_path: &str) -> io::Result<&Path> {
 
 /// 標準出力の文字列からファイルパスを抽出し、`PathBuf` として返す関数
 fn extract_output_path(stdout: &str) -> Option<PathBuf> {
-    let re = Regex::new(r".*\.(mp4|jpg|txt)$").unwrap();
+    let re = Regex::new(r".*\.(mp4|jpg|txt|zip)$").unwrap();
 
-    stdout
+    let file_path = stdout
         .lines()
         .rev() // 出力を逆順に確認
         .find_map(|line| {
@@ -89,5 +95,6 @@ fn extract_output_path(stdout: &str) -> Option<PathBuf> {
             } else {
                 None
             }
-        })
+        });
+    file_path
 }
