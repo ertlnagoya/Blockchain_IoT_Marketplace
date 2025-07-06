@@ -25,8 +25,8 @@ async def run_command(label, cmd, cwd):
 async def main():
     cwd = os.path.join(os.path.dirname(__file__), "../")
     commands = [
-        ("owner-1", ["./target/debug/mediator-b", "settings/owner_1.yaml"]),
-        ("owner-2", ["./target/debug/mediator-b", "settings/owner_2.yaml"]),
+        (f"owner-{i}", ["./target/debug/mediator-b", f"settings/owner_{i}.yaml"])
+        for i in range(1, 12)
     ]
 
     await asyncio.gather(*(run_command(label, cmd, cwd) for label, cmd in commands))
