@@ -43,6 +43,7 @@ use tokio::time;
 use serde::Deserialize;
 
 use std::process::Command;
+use std::time::Instant;
 
 
 #[derive(Debug, Deserialize)]
@@ -158,7 +159,7 @@ fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppR
 
     match output {
         Ok(output) if output.status.success() => {
-            println!("ipfs_recordsテーブルにデータを挿入しました");
+            // println!("ipfs_recordsテーブルにデータを挿入しました");
             Ok(())
         }
         Ok(output) => {
@@ -268,6 +269,8 @@ async fn main() -> AppResult<()> {
         };
 
         let re = regex::Regex::new(&format!(r"^{}_movie_([0-9]+)\.json$", config_clone.camra_id)).unwrap();
+        let start = Instant::now();
+        let mut elapsed_times: [std::time::Duration; 10] = [Duration::from_secs(0); 10];
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
@@ -305,6 +308,7 @@ async fn main() -> AppResult<()> {
                     for matched_rules in rules.iter().filter(|rule| rule.is_matched(&mp4_path)) {
                         let processer = matched_rules.parse_processer().unwrap();
                         let metadata = matched_rules.parse_metadata().unwrap();
+                        let start = Instant::now();
                         let processed_file = match process::caller::call_processer(
                             mp4_path.to_str().unwrap(),
                             &config_clone.processed_dir,
@@ -317,6 +321,8 @@ async fn main() -> AppResult<()> {
                                 panic!("Error processing file: {}", e);
                             }
                         };
+                        let elapsed = start.elapsed();
+                        elapsed_times[0] += elapsed;
                         // デプロイするファイルの情報を取得（ファイルサイズや作成日時など）
                         let meta_info = metadata.create_metadata(&processed_file).unwrap();
                         let contract_info = matched_rules.get_contract();
@@ -329,6 +335,7 @@ async fn main() -> AppResult<()> {
                         )
                         .await
                         .unwrap();
+                        let start = Instant::now();
                         match deploy_eth_client.deploy_product(deploy_param).await {
                             Ok(address) => {
                                 deploy_eth_client
@@ -338,11 +345,11 @@ async fn main() -> AppResult<()> {
                                 db.insert(address, processed_file.clone()).await;
                                 json_data["address"] = serde_json::Value::String(format!("{:?}", address));
                                 json_data["owner"] = serde_json::Value::String(format!("{:?}", deploy_eth_client.account));
-                                println!(
-                                    "Product deployed successfully with address: {:?} for file {:?}",
-                                    address,
-                                    processed_file
-                                );
+                                // println!(
+                                //     "Product deployed successfully with address: {:?} for file {:?}",
+                                //     address,
+                                //     processed_file
+                                // );
                             }
                             Err(e) => {
                                 eprintln!(
@@ -352,6 +359,8 @@ async fn main() -> AppResult<()> {
                                 continue; // Skip if deployment fails
                             }
                         }
+                        let elapsed = start.elapsed();
+                        elapsed_times[1] += elapsed;
                         // JSONをprocessed_dirに出力
                         let processed_json_path = Path::new(&config_clone.processed_dir)
                             .join(path.file_name().unwrap());
@@ -363,24 +372,36 @@ async fn main() -> AppResult<()> {
                         }
                         
                         // IPFSにアップロード
+                        let start = Instant::now();
                         let cid = upload_json_to_ipfs(&processed_json_path);
-                        println!("Uploaded JSON to IPFS with CID: {:?}", cid);
+                        // println!("Uploaded JSON to IPFS with CID: {:?}", cid);
+                        let elapsed = start.elapsed();
+                        elapsed_times[2] += elapsed;
 
                         // PostgreSQLにアップロード
+                        let start = Instant::now();
                         if let Some(cid) = cid {
                             if let Err(e) = upload_json_info_to_postgres(&processed_json_path, &cid) {
                                 eprintln!("Failed to upload JSON info to PostgreSQL: {}", e);
                             } else {
-                                println!("JSON info uploaded to PostgreSQL successfully");
+                                // println!("JSON info uploaded to PostgreSQL successfully");
                             }
                         } else {
                             eprintln!("Failed to upload JSON to IPFS, skipping PostgreSQL upload");
                         }
+                        let elapsed = start.elapsed();
+                        elapsed_times[3] += elapsed;
                     }
                 }       
             }
         }
-        println!("File watcher initialized for directory: {}", raw_data_dir);
+        let elapsed = start.elapsed();
+        println!("Initialization elapsed time for initialization and processing: {:.2?}", elapsed);
+        println!("Elapsed times for each step:");
+        println!("1. File processing: {:.2?}", elapsed_times[0]);
+        println!("2. IoT Market deploy: {:.2?}", elapsed_times[1]);
+        println!("3. IPFS upload: {:.2?}", elapsed_times[2]);
+        println!("4. PostgreSQL upload: {:.2?}", elapsed_times[3]);
     });
 
     // watch blockchain
