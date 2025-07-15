@@ -11,39 +11,15 @@
 
 ## 概要
 
-データ流通を支援する分散型需給マッチングシステム
-のPoC。ブロックチェーンを用いたIoT機器のデータ流通を追体験できる。
-
-データ流通までのワークフロー
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Mediator(IoTOwner)
-    actor iotOwner as IoTオーナー
-    participant Merchandise
-    participant IoTMarketplace as マーケットプレイス
-    participant Frontend as UIアプリケーション
-    actor buyer as データ購入者
-    participant Mediator(buyer)
-    Mediator(IoTOwner)->>IoTMarketplace: Deploy
-    Note right of Mediator(IoTOwner): Hash値などメタデータ
-    IoTMarketplace->>Merchandise: コンストラクタ
-    buyer->>Frontend: データ購入リクエスト
-    Note left of buyer: ウォレットによる署名
-    Frontend->>Merchandise: purchase
-    Mediator(buyer)->>Mediator(IoTOwner): 実データの要求
-    Mediator(buyer)->>Mediator(buyer):Hash()
-    Mediator(buyer)->>Merchandise: verify()
-    Mediator(IoTOwner)->>Merchandise: withdraw()
-```
+データ流通を支援する分散型需給マッチングシステムのPoC。ブロックチェーンを用いたIoT機器のデータ流通を追体験できる。
+[Blockchain_IoT_Marketplace](https://github.com/ertlnagoya/Blockchain_IoT_Marketplace)に、デプロイされた商品の検索機能を加えたもの。
 
 ## requirements
 
 - Docker
 - VSCode (Extensions：Docker+DevContainers)
 
-## セットアップ
+## 起動
 
 ### 1. リポジトリをクローン
 
@@ -74,7 +50,7 @@ npx hardhat node
 npx hardhat run scripts/deployMerchandiseWithIoTMarket.ts --network localhost
 ```
 
-これによってローカルネットワークに、IoT Marketといくつかのサンプルデータがデプロイされます。
+これによってローカルネットワークに、IoT Marketといくつかのサンプルデータがデプロイされます。  
 （注意）コントラクトのデプロイは不安定で、コントラクト名が`Unrecognized Contract`になる失敗がある（DevContainer作成直後は失敗する印象）。  
 デプロイしたコントラクト名が正常に表示されていない場合、`npx hardhat node`からやり直す。
 
@@ -141,43 +117,51 @@ cargo run
 
 これによって、ストレージサーバーが起動します。ストレージサーバーはポート3000番で待ち受けます。
 
-### 6. Mediator(owner)のセットアップ
+### 6. IPFS, PostgreSQLのセットアップ
+
+`ipfs/README.md`を参照してください。
+
+### 7. Mediator(owner)のセットアップ
 
 ```bash
 cd mediator-owner
-code .
+docker compose up -d
 ```
 
+これで、Mediatorを複数起動させるためのコンテナを起動します。
+
+```bash
+docker exec owner cargo build
+```
+
+これで、Mediatorをビルドします。
+
+```bash
+docker exec owner python3 -u scripts/run.py
+```
+
+これで、Mediatorが複数起動します。
+ownerは商品のデプロイとストレージサーバーへのファイルのアップロードを行います。
+
+### 8. Mediator(buyer)のセットアップ
+
 VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選択してコンテナに入る。
-`mediator-owner/.devcontainer/devcontainer.json`の`postCreateCommand`により、Pythonスクリプトの実行に必要なライブラリが自動的にインストールされる。  
 
 続いて、以下のコマンドを実行
 
 ```bash
-cargo run
+cargo run --bin mediator-b
 ```
 
-これによって、Mediatorが起動します。
-ownerは商品のデプロイとストレージサーバーへのファイルのアップロードを行います。
+これで、Mediatorが起動します。
+buyerはUIで購入した商品のダウンロードを行います。
 
-### 7. Mediator(buyer)のセットアップ
+### 9. 購入手続きを行う
 
-```bash
-cd mediator-buyer
-code .
-```
-
-以降、手順6と同様にMediator(buyer)をセットアップしてください。
-
-### 8. 購入手続きを行う
-
-Mediator(owner)で`raw_data`にmp4ファイルを出し入れして、mediatorに新しい動画が来たと認識させてください。  
-（注意）ファイル更新のnotifyはDocker上では不安定であるため、ファイル更新のイベントが検出されない場合はMediator(owner)で`cargo run`しなおしてください（最初の数回は失敗する印象）。
 `localhost:5173`にアクセスし、metamaskでアカウントをbuyerのもの（UUIDが`0x3c`で始まるもの）に切り替えてください。  
 その後、mediator(owner)の実行によってデプロイされた商品を購入してください。  
+UIで検索し、検索にヒットした商品をそれぞれ購入できます。
 正しくセットアップされていれば、buyerはイベントをキャッチしてストレージサーバーから`downloads/`にファイルをダウンロードするはずです。
-
-![How it works](./images/how_it_works.png)
 
 ## Tips
 
