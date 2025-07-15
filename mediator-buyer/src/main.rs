@@ -20,6 +20,7 @@ use crate::{
 };
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use errors::AppResult;
 use process::rule::RuleList;
@@ -164,6 +165,10 @@ async fn main() -> AppResult<()> {
         let filter = eth_client.create_evnet_filter(None).await;
         let stream = filter.stream(std::time::Duration::from_secs(2));
         futures::pin_mut!(stream);
+        
+        // 購入時刻を保持するための共有変数
+        let purchase_start_time = Arc::new(Mutex::new(Option::<std::time::Instant>::None));
+        
         loop {
             // loopでログを監視
             let log = match stream.next().await.unwrap() {
@@ -177,6 +182,7 @@ async fn main() -> AppResult<()> {
             let eth_client = eth_client.clone();
             let key_pair = rsa_keypair.clone();
             let deployed_files = deployed_files.clone();
+            let purchase_time = purchase_start_time.clone();
 
             // ログが来たらスレッドを立てて処理
             tokio::spawn(async move {
@@ -224,6 +230,9 @@ async fn main() -> AppResult<()> {
                 }
                 if buyer == &account_address && event == &ethereum::topic::topic_purchase() {
                     println!("You bought a product of {}", owner);
+                    let now = std::time::SystemTime::now();
+                    // 購入時刻を記録
+                    *purchase_time.lock().unwrap() = Some(std::time::Instant::now());
                 }
                 // Upload処理発生 & 自身がデータ購入者の場合
                 if buyer == &account_address && event == &ethereum::topic::topic_upload() {
@@ -252,6 +261,15 @@ async fn main() -> AppResult<()> {
                             match response {
                                 Ok(result) => {
                                     println!("Verification result: {}", result);
+                                    
+                                    // 購入からの全体時間を計測
+                                    if let Some(purchase_start) = *purchase_time.lock().unwrap() {
+                                        let total_elapsed = purchase_start.elapsed();
+                                        println!(
+                                            "Total time from purchase to verification: {} seconds",
+                                            total_elapsed.as_secs_f64()
+                                        );
+                                    }
                                 }
                                 Err(e) => {
                                     println!("Error verifying product, {}", e);

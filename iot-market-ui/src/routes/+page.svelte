@@ -12,6 +12,8 @@
 	let filterByLocation: boolean = false;
 	let filterByPeople: boolean = false;
 	let peopleExist: boolean = true;
+	let searchExecutionTime: number | null = null;
+	let isSearching: boolean = false;
 
 	// MetaMaskに接続する関数
 	const connectToMetaMask = async () => {
@@ -53,6 +55,10 @@
 	};
 
 	async function executeSearch() {
+		isSearching = true;
+		searchExecutionTime = null;
+		const executionStartTime = performance.now();
+		
 		// ベースクエリを構築
 		let query = 'SELECT *';
 		let conditions: string[] = [];
@@ -68,6 +74,7 @@
 		if (filterByTime) {
 			if (!startTime || !endTime) {
 				alert('時間フィルタを有効にする場合は開始時刻と終了時刻を両方指定してください。');
+				isSearching = false;
 				return;
 			}
 			conditions.push(`start_timestamp >= '${startTime}'`);
@@ -78,6 +85,7 @@
 		if (filterByLocation) {
 			if (!latitude || !longitude) {
 				alert('場所フィルタを有効にする場合は緯度と経度を両方指定してください。');
+				isSearching = false;
 				return;
 			}
 			const radiusMeters = parseFloat(radius);
@@ -103,12 +111,23 @@
 		
 		console.log('Executing query:', query);
 		
-		const response = await fetch('/api/sql-query', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ query })
-		});
-		queryResult = await response.json();
+		try {
+			const response = await fetch('/api/sql-query', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ query })
+			});
+			queryResult = await response.json();
+			
+			const executionEndTime = performance.now();
+			searchExecutionTime = Math.round((executionEndTime - executionStartTime) * 100) / 100;
+		} catch (error) {
+			console.error('Search error:', error);
+			const executionEndTime = performance.now();
+			searchExecutionTime = Math.round((executionEndTime - executionStartTime) * 100) / 100;
+		} finally {
+			isSearching = false;
+		}
 	}
 </script>
 
@@ -243,11 +262,32 @@
 		
 		<!-- 検索ボタン -->
 		<button 
-			class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+			class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
 			on:click={executeSearch}
+			disabled={isSearching}
 		>
-			検索実行
+			{#if isSearching}
+				検索中...
+			{:else}
+				検索実行
+			{/if}
 		</button>
+		
+		<!-- 検索実行状態表示 -->
+		{#if isSearching}
+			<div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+				<p class="text-blue-800 text-sm">
+					<span class="font-semibold">🔍 検索中...</span>
+				</p>
+			</div>
+		{:else if searchExecutionTime !== null}
+			<div class="bg-green-50 border border-green-200 rounded-lg p-3">
+				<p class="text-green-800 text-sm">
+					<span class="font-semibold">検索実行時間:</span> 
+					<span class="font-mono font-bold">{searchExecutionTime}ms</span>
+				</p>
+			</div>
+		{/if}
 	</div>
 	
 	{#if queryResult && Array.isArray(queryResult)}
