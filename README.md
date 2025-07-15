@@ -19,6 +19,10 @@
 - Docker
 - VSCode (Extensions：Docker+DevContainers)
 
+## データセットの準備
+
+`metadata_generator/README.md`を参照してください。
+
 ## 起動
 
 ### 1. リポジトリをクローン

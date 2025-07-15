@@ -1,4 +1,5 @@
 from math import ceil
+import argparse
 import cv2
 import os
 import glob
@@ -14,9 +15,6 @@ import tempfile
 from geopy.distance import distance
 from geopy.point import Point
 
-# 画像が保存されているディレクトリ（再帰的に探索）
-frames_dir = r'C:\Users\yuichiro.yasue\Downloads\mevid-v1-bbox-test\bbox_test'
-output_dir = "outputs/output"
 frames_per_second = 30  # Assuming 30 FPS
 output_movie_seconds = 60 * 5  # 5 minutes
 
@@ -243,6 +241,17 @@ class MovieGenerator:
         return os.path.basename(video_path)
 
 def main():
+    argparser = argparse.ArgumentParser(description="Generate movies from frames with bounding boxes.")
+    argparser.add_argument('--frames_dir', type=str, required=True, help="Directory containing frames with bounding boxes.")
+    argparser.add_argument('--output_dir', type=str, required=True, help="Directory to save the output movies.")
+
+    # 画像が保存されているディレクトリ（再帰的に探索）
+    frames_dir = os.path.abspath(argparser.parse_args().frames_dir)
+    output_dir = os.path.abspath(argparser.parse_args().output_dir)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     # bbox2frames_path[BBoxInfo] = [image_path, ...]
     bbox_infos2frames_path = get_bbox_infos2frames_path(frames_dir)
     print(f"Found {len(bbox_infos2frames_path)} movies.")
