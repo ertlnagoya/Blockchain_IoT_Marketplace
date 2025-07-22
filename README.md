@@ -9,6 +9,11 @@
 ![Svelte](https://img.shields.io/badge/svelte-%23f1413d.svg?style=for-the-badge&logo=svelte&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
+## 引継ぎ情報
+
+ブランチ`0704-batch-purchase`で、バッチ購入機能を実装しようとしましたが、失敗しました。  
+バッチ購入機能は、複数の商品を一度のコントラクトで購入できる機能です。
+
 ## 概要
 
 データ流通を支援する分散型需給マッチングシステムのPoC。ブロックチェーンを用いたIoT機器のデータ流通を追体験できる。
