@@ -1,0 +1,33 @@
+{
+  "@context": [
+    "https://www.w3.org/2018/credentials/v1",
+    "https://w3id.org/security/suites/ed25519-2020/v1",
+    {
+      "ex": "https://example.org/vocab#",
+      "entityType": "ex:entityType",
+      "purpose": "ex:purpose",
+      "legalCompliance": "ex:legalCompliance",
+      "dataHandlingPolicy": "ex:dataHandlingPolicy",
+      "misuseRecord": "ex:misuseRecord"
+    }
+  ],
+  "id": "urn:uuid:b79943cc-f7e4-425b-b702-faef1ea3a3cb",
+  "type": ["VerifiableCredential"],
+  "issuer": "did:key:z6MkgNM57yr3EkZozZM4XEFCYaJa8C23KMcSg2jRKNWMYkiB",
+  "issuanceDate": "2025-07-20T15:38:36.848Z",
+   "credentialSubject": {
+    "id": "did:key:z6MkhYuHbc5dNTpjqNFG1PMx3QXvDrzogDjrKU53pZwPY3xx",
+    "entityType": "GovernmentOrganization",
+    "purpose": "research",
+    "legalCompliance": true,
+    "dataHandlingPolicy": "ISO27001",
+    "misuseRecord": false
+  },
+  "proof": {
+    "type": "Ed25519Signature2020",
+    "created": "2025-07-20T15:38:36Z",
+    "verificationMethod": "did:key:z6MkgNM57yr3EkZozZM4XEFCYaJa8C23KMcSg2jRKNWMYkiB#z6Mkn5a1ayMRkLoTJaZiwtPWj8bMagvR5dkdodztLvRedSHp",
+    "proofPurpose": "assertionMethod",
+    "proofValue": "z3tm2CYDPex4xxUfkYDZ6AriDvRBT4siXr51dcHV5kJxCjVTLUsWviNfWZWtVjKnc8T5Dseh7zCWAiSrentgYLBEk"
+  }
+}

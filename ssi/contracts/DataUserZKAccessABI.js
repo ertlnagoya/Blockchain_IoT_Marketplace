@@ -1,0 +1,24 @@
+export const DataUserZKAccessABI = [
+  {
+    "inputs":[{"internalType":"address","name":"_verifier","type":"address"}],
+    "stateMutability":"nonpayable","type":"constructor"
+  },
+  {
+    "anonymous":false,"inputs":[
+      {"indexed":true,"internalType":"address","name":"user","type":"address"},
+      {"indexed":false,"internalType":"uint256","name":"level","type":"uint256"},
+      {"indexed":false,"internalType":"string","name":"accessLevel","type":"string"}],
+    "name":"UserZKVerified","type":"event"
+  },
+  {
+    "inputs":[
+      {"internalType":"uint256[2]","name":"a","type":"uint256[2]"},
+      {"internalType":"uint256[2][2]","name":"b","type":"uint256[2][2]"},
+      {"internalType":"uint256[2]","name":"c","type":"uint256[2]"},
+      {"internalType":"uint256","name":"level","type":"uint256"}],
+    "name":"verifyUserLevelZK","outputs":[
+      {"internalType":"uint256","name":"","type":"uint256"},
+      {"internalType":"string","name":"","type":"string"}],
+    "stateMutability":"nonpayable","type":"function"
+  }
+];
