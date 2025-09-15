@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# hardhat/build
+ssi/artifacts/
+ssi/cache/
+
+# node
+ssi/node_modules/
+ssi/ssi-ui/node_modules/
+
+# frontend build
+ssi/ssi-ui/dist/
+ssi/ssi-ui/.vite/
+ssi/ssi-ui/.next/
+
+# 不提交 provider
+ssi/did/provider/
+ssi/vc/provider/
+ssi/contracts/*Provider*.sol
+ssi/contracts/scripts/*provider*.cjs
+ssi/ssi-ui/src/components/*provider*.jsx
+
+# ZK 中间产物（不入库）
+ssi/circuits/*.wtns
+ssi/circuits/*.ptau
+ssi/circuits/*_000*.zkey
+ssi/circuits/*.r1cs
