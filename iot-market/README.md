@@ -1,15 +1,115 @@
 # IoT データマーケットプレイス
 
+<p align="center">
+  <a href="#english-readme">English README</a> ｜ <a href="#日本語-readme">日本語 README</a>
+</p>
+
+---
+## English README
+
+A blockchain-based framework for distributing IoT data.
+
+### Recommended Environment
+
+- Prefer developing with Docker Desktop (so that `host.docker.internal` works).
+- If Docker Desktop is installed, comment out `runArgs` in `devcontainer.json`.
+
+### Usage
+
+#### Setup
+
+- Clone the project
+
+```bash
+git clone https://github.com/ertlnagoya/iot-market.git
+cd iot-market
+```
+
+- Start Dev Container  
+  Install VS Code extension “Dev Containers”.  
+  Open Command Palette and choose “Dev Containers: Open Folder in Container”.
+
+- Create `.env`  
+  Copy `.env.example` to `.env` and edit values.
+
+```bash
+cp .env.example .env
+```
+
+### Commands
+
+- Compile
+
+```bash
+npx hardhat compile
+```
+
+- Generate contract type definitions (TypeChain)
+
+```bash
+npx hardhat typechain
+```
+
+- Test
+
+```bash
+npx hardhat test
+```
+
+- Run local network (Hardhat Node)
+
+```bash
+npx hardhat node
+```
+
+- Deploy  
+  Use `--network` to select the target: `sepolia` (testnet), `localhost` (local), `hardhat` (ephemeral; default).  
+  When targeting `sepolia`, Etherscan verification will run.  
+  Use `--tags` to choose which contracts to deploy. `all` deploys everything; otherwise pass a comma-separated list (default `all`).  
+  See scripts under `deploy/` for details.
+
+```bash
+npx hardhat deploy --tags {tags} --network {network}
+```
+
+### Sequence (Purchase to Verification)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Mediator(IoTOwner)
+    actor iotOwner as IoT Owner
+    participant Merchandise
+    participant IoTMarketplace as Marketplace
+    participant Frontend as UI Application
+    actor buyer as Data Buyer
+    participant Mediator(buyer)
+    Mediator(IoTOwner)->>IoTMarketplace: Deploy
+    Note right of Mediator(IoTOwner): Metadata such as hash
+    IoTMarketplace->>Merchandise: Constructor
+    buyer->>Frontend: Purchase request
+    Note left of buyer: Wallet signature
+    Frontend->>Merchandise: purchase
+    Mediator(buyer)->>Mediator(IoTOwner): Request real data
+    Mediator(buyer)->>Mediator(buyer): Hash()
+    Mediator(buyer)->>Merchandise: verify()
+    Mediator(IoTOwner)->>Merchandise: withdraw()
+```
+
+---
+
+## 日本語 README
+
 ブロックチェーンを用いた IoT データの流通フレームワークです。
 
-## 推奨環境
+### 推奨環境
 
-Docker Engine でも動作するように設定していますが、host.docker.internal が使える Docker Desctop 環境での開発を推奨します。
-Docker Desktop がインストールされている場合`devcontainer.json`の`runArgs`をコメントアウトしてください。
+- Docker Desktop 環境での開発を推奨します（`host.docker.internal` が使用できるため）。
+- Docker Desktop がインストールされている場合、`devcontainer.json` の `runArgs` をコメントアウトしてください。
 
-# Usage
+### 使い方
 
-## Setup
+#### セットアップ
 
 - プロジェクトをクローンする
 
@@ -19,16 +119,17 @@ cd iot-market
 ```
 
 - devcontainer の起動  
-  VSCode の拡張機能で Remote - Containers をインストールしてください。その後コマンドパレットを開き、devcontainer: Open Folder in Container を選択してください。
+  VS Code の拡張機能「Remote - Containers（Dev Containers）」をインストールしてください。  
+  コマンドパレットから「Dev Containers: Open Folder in Container」を選択し、コンテナ内で開きます。
 
-- .env ファイルを作成する
-  .env.example をコピー・編集して.env ファイルを作成してください。
+- .env ファイルを作成する  
+  `.env.example` をコピーして `.env` を作成・編集してください。
 
 ```bash
 cp .env.example .env
 ```
 
-## コマンド
+### コマンド
 
 - コンパイル
 
@@ -36,7 +137,7 @@ cp .env.example .env
 npx hardhat compile
 ```
 
-- コントラクトの型定義ファイルの生成
+- コントラクトの型定義ファイルの生成（TypeChain）
 
 ```bash
 npx hardhat typechain
@@ -48,25 +149,23 @@ npx hardhat typechain
 npx hardhat test
 ```
 
-- ローカルネットワークの起動
+- ローカルネットワークの起動（Hardhat Node）
 
 ```bash
 npx hardhat node
 ```
 
 - デプロイ  
-  --network オプションでデプロイ先のネットワークを指定できます。sepolia(テストネット), localhost(ローカルネットワーク), hardhat(コード実行時のみ動作する使い捨てネットワーク) が指定でき、デフォルトは hardhat です。また sepolia を指定した際には etherscan へのコード検証を行います。  
-  --tags オプションでデプロイするコントラクト群を指定できます。
-  all で全てのコントラクトをデプロイし、それ以外の場合はカンマ区切りで複数のコントラクトを指定できます。デフォルトは all です。
-  詳細は deploy フォルダ内のスクリプトを参照してください。
+  `--network` でデプロイ先を指定できます：`sepolia`（テストネット）, `localhost`（ローカル）, `hardhat`（一時ネットワーク。デフォルト）。  
+  `sepolia` を指定した場合は Etherscan へのコード検証も実施します。  
+  `--tags` でデプロイするコントラクト群を指定可能。`all` は全コントラクト、カンマ区切りで複数指定も可能（デフォルト `all`）。  
+  詳細は `deploy/` 内のスクリプトを参照してください。
 
 ```bash
 npx hardhat deploy --tags {tags} --network {network}
 ```
 
-### シーケンス図
-
-データ流通における購入~検証までのシーケンス図です。
+### シーケンス図（購入〜検証）
 
 ```mermaid
 sequenceDiagram
@@ -85,7 +184,7 @@ sequenceDiagram
     Note left of buyer: ウォレットによる署名
     Frontend->>Merchandise: purchase
     Mediator(buyer)->>Mediator(IoTOwner): 実データの要求
-    Mediator(buyer)->>Mediator(buyer):Hash()
+    Mediator(buyer)->>Mediator(buyer): Hash()
     Mediator(buyer)->>Merchandise: verify()
     Mediator(IoTOwner)->>Merchandise: withdraw()
 ```

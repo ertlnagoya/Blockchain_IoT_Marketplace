@@ -10,17 +10,17 @@ use crate::{
 
 use super::script::ScriptFile;
 
-// 個別のルールを表す構造体
+// Struct representing an individual rule
 #[derive(Debug, Clone)]
 pub struct Rule {
-    target: Regex, // target は正規表現として保存
+    target: Regex, // target is stored as a regular expression
     processer: ScriptDefinition,
     metadata: ScriptDefinition,
     contract: Contract,
 }
 
 impl Rule {
-    /// 指定されたファイル名が正規表現にマッチするかを判定
+    /// Determine whether the specified file name matches the regular expression
     pub fn is_matched<P: AsRef<Path>>(&self, file_path: P) -> bool {
         file_path
             .as_ref()
@@ -30,12 +30,12 @@ impl Rule {
             .unwrap_or(false)
     }
 
-    /// processer フィールドを ScriptFile にパース
+    /// Parse the `processer` field into `ScriptFile`
     pub fn parse_processer(&self) -> Result<ScriptFile, &'static str> {
         ScriptFile::from_str(&self.processer.package).map_err(|_| "Invalid processer package name")
     }
 
-    /// metadata フィールドを MetadataType にパース
+    /// Parse the `metadata` field into `MetadataType`
     pub fn parse_metadata(&self) -> Result<MetadataType, &'static str> {
         metadata::entity::MetadataType::from_str(&self.metadata.package)
             .map_err(|_| "Invalid metadata package name")
@@ -46,7 +46,7 @@ impl Rule {
     }
 }
 
-// 正規表現パース前の構造体（serde 用）
+// Struct before regex parsing (for serde)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct RawRule {
     target: String,
@@ -80,19 +80,19 @@ impl Contract {
     }
 }
 
-// ルール一覧を管理する構造体
+// Struct that manages the list of rules
 #[derive(Debug, Clone)]
 pub struct RuleList {
     rules: Vec<Rule>,
 }
 
 impl RuleList {
-    /// ファイルを読み込んで RuleList を生成する
+    /// Read a file and construct `RuleList`
     pub async fn new(file_path: &str) -> AppResult<Self> {
         let contents = fs::read_to_string(file_path).await?;
         let raw_rules: Vec<RawRule> = serde_json::from_str(&contents)?;
 
-        // 正規表現に変換
+        // Convert to regular expressions
         let rules = raw_rules
             .into_iter()
             .map(|raw_rule| {
@@ -109,7 +109,7 @@ impl RuleList {
         Ok(Self { rules })
     }
 
-    /// ルールのイテレータを返す
+    /// Return an iterator over the rules
     pub fn iter(&self) -> std::slice::Iter<Rule> {
         self.rules.iter()
     }

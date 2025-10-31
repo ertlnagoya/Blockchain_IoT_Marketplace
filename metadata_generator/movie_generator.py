@@ -1,3 +1,7 @@
+# Only reads raw images; it will NOT upload anything for you
+# Generate videos and corresponding metadata (JSON) to prepare for later upload or distribution
+# The script traverses frames in the specified directory (with pedestrian bounding boxes), groups by camera, and creates multiple videos
+# Each video gets a JSON with: camera ID + video filename + pedestrian IDs and their bounding boxes + video start/end timestamps + camera geolocation (latitude/longitude)
 from math import ceil
 import argparse
 import cv2
@@ -21,7 +25,7 @@ output_movie_seconds = 60 * 5  # 5 minutes
 BBoxInfo = namedtuple('BBoxInfo', ['pedestrian_id', 'outfit', 'camera', 'tracklet'])
 
 def get_bbox_info(path):
-    # ファイル名からBBoxInfoを抽出
+    # Extract BBoxInfo from filename
     pattern = re.compile(r'([0-9]*)O([0-9]*)C([0-9]*)T([0-9]*)F([0-9]*).jpg$', re.IGNORECASE)
     match = pattern.match(os.path.basename(path))
     if match:
@@ -44,7 +48,7 @@ def get_bbox_infos2frames_path(frames_dir):
         paths.sort()
     return bbox_infos2frames_path
 
-# image_pathsをmovies_per_camera個に分割
+# Split image_paths into movies_per_camera chunks
 def chunk_list(lst, n):
     avg = len(lst) // n
     rem = len(lst) % n
@@ -94,12 +98,12 @@ class MovieGenerator:
         self.max_height = max_height
 
     def generate_movies_image_paths(self):
-        # まず、各bbox_infoに対応する画像数を取得
+        # First, get the number of images for each bbox_info
         total_original_frames = sum([len(self.bbox_infos2frames_path[b]) for b in self.bbox_infos])
 
-        # 挿入する「誰もいない」フレームの総数
+        # Total number of "empty" frames to insert
         total_insert_frames = self.each_camera_output_movies_num * output_movie_seconds * frames_per_second - total_original_frames
-        # gap数を「先頭」「間」「末尾」の分だけ増やす
+        # Increase the number of gaps to include "head", "middle", and "tail"
         num_gaps_with_ends = len(self.bbox_infos) + 1
         if num_gaps_with_ends > 0 and total_insert_frames > 0:
             base = total_insert_frames // num_gaps_with_ends
@@ -108,7 +112,7 @@ class MovieGenerator:
         else:
             insert_lengths = []
 
-        image_paths = [None] * insert_lengths[0]  # 先頭に空フレームを追加
+        image_paths = [None] * insert_lengths[0]  # Add empty frames at the beginning
         for i, bbox_info in enumerate(self.bbox_infos):
             image_paths.extend(self.bbox_infos2frames_path[bbox_info])
             image_paths.extend([None] * insert_lengths[i + 1])
@@ -118,10 +122,10 @@ class MovieGenerator:
 
     def calculate_max_size(self, movies_image_paths):
         def _get_img_size(img_path):
-            # 画像サイズだけ取得するためにimdecode+ファイル読み込みで高速化
+            # To only get image size quickly, use imdecode + partial file read
             try:
                 with open(img_path, 'rb') as f:
-                    buf = np.frombuffer(f.read(1024 * 1024), dtype=np.uint8)  # 1MBまで読む
+                    buf = np.frombuffer(f.read(1024 * 1024), dtype=np.uint8)  # Read up to 1MB
                 img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
                 if img is not None:
                     h, w = img.shape[:2]
@@ -185,7 +189,7 @@ class MovieGenerator:
                 self.image_paths = image_paths
                 self.max_width = max_width
                 self.max_height = max_height
-                self.empty_frame = np.zeros((max_height, max_width, 3), dtype=np.uint8)  # 黒い画像を事前に生成
+                self.empty_frame = np.zeros((max_height, max_width, 3), dtype=np.uint8)  # Pre-generate black image
 
             def load_image(self, img_path):
                 if img_path is None:
@@ -194,10 +198,10 @@ class MovieGenerator:
                 assert img is not None, f"Failed to load image: {img_path}"
                 canvas = np.zeros((self.max_height, self.max_width, 3), dtype=np.uint8)
                 h, w = img.shape[:2]
-                canvas[:h, :w] = img  # 左上揃えで貼り付け
+                canvas[:h, :w] = img  # Paste aligned to top-left
                 bbox = {
-                    'x': 0,  # 左上揃えなのでxは0
-                    'y': 0,  # 左上揃えなのでyは0
+                    'x': 0,  # x is 0 because it’s aligned to top-left
+                    'y': 0,  # y is 0 because it’s aligned to top-left
                     'width': w,
                     'height': h
                 }
@@ -207,13 +211,13 @@ class MovieGenerator:
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     yield from executor.map(self.load_image, self.image_paths)
 
-        # 動画ライターの初期化
+        # Initialize video writer
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(video_path, fourcc, frames_per_second, (self.max_width, self.max_height))
 
         person_dict = defaultdict(list)  # pedestrian_id -> [{frame, bbox}, ...]
 
-        # 画像のプリフェッチ
+        # Image prefetch
         prefetcher = ImagePrefetcher(movie_image_paths, self.max_width, self.max_height)
         for i, (img_path, img, bbox) in enumerate(prefetcher):
             if i % 3000 == 0:
@@ -245,7 +249,7 @@ def main():
     argparser.add_argument('--frames_dir', type=str, required=True, help="Directory containing frames with bounding boxes.")
     argparser.add_argument('--output_dir', type=str, required=True, help="Directory to save the output movies.")
 
-    # 画像が保存されているディレクトリ（再帰的に探索）
+    # Directory where images are stored (recursively searched)
     frames_dir = os.path.abspath(argparser.parse_args().frames_dir)
     output_dir = os.path.abspath(argparser.parse_args().output_dir)
 
@@ -277,7 +281,7 @@ def main():
             print(f"Camera {camera_id} already completed. Skipping...")
             continue
 
-        # 各カメラの動画を作成
+        # Create videos for each camera
         print(f"Camera {camera_id} has {len(bbox_infos)} movies.")
         movie_generator = MovieGenerator(
             camera_id=camera_id,
@@ -290,7 +294,7 @@ def main():
         movie_generator.generate_movies()
         print(f"Finished processing camera {camera_id}.", flush=True)
     
-    initial_location = Point(35.1534, 136.9668)  # 初期位置を設定
+    initial_location = Point(35.1534, 136.9668)  # Set initial location
     locations = {}
     for i, camera_id in enumerate(camera2bbox_infos.keys()):
         if i == 0:

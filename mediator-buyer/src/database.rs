@@ -16,19 +16,19 @@ impl DeployedMerchandise {
         }
     }
 
-    /// データを非同期で追加
+    /// Add data asynchronously
     pub async fn insert(&self, key: H160, value: PathBuf) {
         let mut db = self.db.write().await;
         db.insert(key, value);
     }
 
-    /// データを非同期で取得
+    /// Get data asynchronously
     pub async fn get(&self, key: &H160) -> Option<PathBuf> {
         let db = self.db.read().await;
         db.get(key).cloned()
     }
 
-    /// データの一覧を非同期で表示
+    /// Display all entries asynchronously
     pub async fn display_all(&self) {
         let db = self.db.read().await;
         println!("Deployed Merchandise DB:");

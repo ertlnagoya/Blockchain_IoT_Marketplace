@@ -7,9 +7,9 @@ import cv2
 
 def extract_frame(movie_path, json_data, output_dir):
     if not os.path.exists(movie_path):
-        raise FileNotFoundError(f"入力ファイルが見つかりません: {movie_path}")
+        raise FileNotFoundError(f"Input file not found: {movie_path}")
 
-    # JSONデータからperson_idごとに最大の面積を持つフレームを抽出
+    # Extract, for each person_id, the frame with the largest bounding box area from the JSON data
     person2frame = {}
     for person_id in json_data["person_ids"]:
         frame_max_area = None
@@ -22,49 +22,49 @@ def extract_frame(movie_path, json_data, output_dir):
         if frame_max_area is not None:
             person2frame[person_id] = frame_max_area
     
-    # 動画ファイルを開く
+    # Open the video file
     capture = cv2.VideoCapture(movie_path)
     if not capture.isOpened():
-        raise RuntimeError(f"動画ファイルを開くことができません: {movie_path}")
+        raise RuntimeError(f"Cannot open the video file: {movie_path}")
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    # person2frameのフレームを一時ディレクトリに保存
+    # Save the frames in person2frame to a temporary directory
     movie_name_without_ext = os.path.splitext(os.path.basename(movie_path))[0]
     temp_dir = os.path.join(output_dir, movie_name_without_ext)
     os.makedirs(temp_dir, exist_ok=True)
     for person_id, frame_number in person2frame.items():
-        assert 0 <= frame_number < frame_count, f"フレーム番号 {frame_number} は動画のフレーム数 {frame_count} を超えています。"
+        assert 0 <= frame_number < frame_count, f"Frame number {frame_number} exceeds total frame count {frame_count}."
         capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = capture.read()
-        assert ret, f"フレーム {frame_number} を読み込むことができませんでした。"
+        assert ret, f"Failed to read frame {frame_number}."
         output_frame_path = os.path.join(temp_dir, f"{person_id}_frame_{frame_number}.jpg")
         cv2.imwrite(output_frame_path, frame)
 
-    # 一時ディレクトリをzipにまとめる
+    # Zip the temporary directory
     zip_path = shutil.make_archive(os.path.join(output_dir, movie_name_without_ext), 'zip', root_dir=temp_dir)
     zip_relative_path = os.path.relpath(zip_path, start="/app")
     print(zip_relative_path)
 
-    # 一時ディレクトリを削除
+    # Delete the temporary directory
     # shutil.rmtree(temp_dir)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="人が映った画像をzipにまとめるスクリプト")
-    parser.add_argument("--input_video", required=True, help="入力ファイルのパス")
-    parser.add_argument("--output_dir", required=True, help="出力ディレクトリ")
+    parser = argparse.ArgumentParser(description="Script to bundle images containing people into a zip")
+    parser.add_argument("--input_video", required=True, help="Path to input file")
+    parser.add_argument("--output_dir", required=True, help="Output directory")
     args = parser.parse_args()
 
     movie_path = args.input_video
     if not os.path.exists(movie_path):
-        raise FileNotFoundError(f"入力ファイルが見つかりません: {movie_path}")
+        raise FileNotFoundError(f"Input file not found: {movie_path}")
     if not movie_path.lower().endswith('.mp4'):
-        raise ValueError(f"入力ファイルはMP4形式でなければなりません: {movie_path}")
+        raise ValueError(f"Input file must be in MP4 format: {movie_path}")
 
     json_path = os.path.join(os.path.dirname(movie_path), os.path.splitext(os.path.basename(movie_path))[0] + ".json")
     if not os.path.exists(json_path):
-        raise FileNotFoundError(f"対応するJSONファイルが見つかりません: {json_path}")
-    # 拡張子を確認
+        raise FileNotFoundError(f"Corresponding JSON file not found: {json_path}")
+    # Read JSON
     with open(json_path, 'r') as f:
         json_data = json.load(f)
 

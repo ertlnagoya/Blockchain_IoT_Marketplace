@@ -22,7 +22,7 @@ COPY ./src ./src
 
 # build for release
 # change {app-name} to app name
-# アプリケーションに-を利用した場合はここだけ_に置き換えが起こる
+# If the application name uses '-', only here it will be replaced with '_'
 RUN rm ./target/release/deps/simple_storage*
 RUN cargo build --release 
 

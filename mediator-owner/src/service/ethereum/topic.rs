@@ -4,8 +4,8 @@ use hex_literal::hex;
 use web3::types::H256;
 
 /** topic.rs
- *  ブロックチェーンのトピックを定義する
- *  topicはイベント関数をkeccak256でハッシュ化したもの
+ *  Define blockchain topics.
+ *  A topic is the keccak256 hash of an event signature.
  *  https://emn178.github.io/online-tools/keccak_256.html
  */
 

@@ -124,7 +124,7 @@ async fn upload(
     let file_name = field.file_name().unwrap().to_string();
     let data = field.bytes().await.unwrap();
 
-    // 1/2の確率で中身を改竄する
+    // Tamper with the contents with a 50% probability
     // let temper = rand::random::<bool>();
     // match temper {
     //     true => {

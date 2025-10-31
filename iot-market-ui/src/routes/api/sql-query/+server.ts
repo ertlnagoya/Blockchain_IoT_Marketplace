@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { Client } from 'pg';
 
-// IPFSからCIDのコンテンツを取得する関数
+// Function to fetch content from IPFS by CID
 async function fetchIPFSContent(cid: string): Promise<any> {
     try {
         const response = await fetch(`http://host.docker.internal:5001/api/v0/cat?arg=${cid}`, {
@@ -14,11 +14,11 @@ async function fetchIPFSContent(cid: string): Promise<any> {
         
         const text = await response.text();
         
-        // JSONとしてパースを試行
+        // Try to parse as JSON
         try {
             return JSON.parse(text);
         } catch {
-            // JSONでない場合はテキストとして返す
+            // If not JSON, return as plain text
             return { content: text, type: 'text' };
         }
     } catch (error) {
@@ -30,7 +30,7 @@ async function fetchIPFSContent(cid: string): Promise<any> {
 export const POST: RequestHandler = async ({ request }) => {
     const { query } = await request.json();
 
-    // PostgreSQLに接続してクエリを実行
+    // Connect to PostgreSQL and execute the query
     const client = new Client({
         user: 'dev',
         host: 'host.docker.internal',
@@ -43,11 +43,11 @@ export const POST: RequestHandler = async ({ request }) => {
         await client.connect();
         const { rows: result } = await client.query(query);
         
-        // 常にIPFSからデータを取得
+        // Always fetch data from IPFS
         if (result.length > 0) {
             const enrichedResult = await Promise.all(
                 result.map(async (row: any) => {
-                    // CIDを含む可能性のあるカラムを探す
+                    // Find columns that may contain a CID
                     const cidColumns = Object.keys(row).filter(key => 
                         key.toLowerCase().includes('cid') || 
                         key.toLowerCase().includes('hash')
@@ -74,7 +74,7 @@ export const POST: RequestHandler = async ({ request }) => {
             });
         }
         
-        // データがない場合は空の配列を返す
+        // Return an empty array when no data
         await client.end();
         return new Response(JSON.stringify([]), {
             headers: { 'Content-Type': 'application/json' }

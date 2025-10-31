@@ -20,9 +20,9 @@ pub struct DeployParam {
     price: U256,
     data_hash: [u8; 32],
     pubkey_address: Address,
-    access_denied_addresses: Vec<Address>, // 追加: 禁止アドレスのリスト
-    additional_info_keys: Vec<String>,     // 追加: 追加情報のキー
-    additional_info_values: Vec<String>,   // 追加: 追加情報の値
+    access_denied_addresses: Vec<Address>, // Added: list of denied addresses
+    additional_info_keys: Vec<String>,     // Added: additional info keys
+    additional_info_values: Vec<String>,   // Added: additional info values
 }
 
 impl DeployParam {
@@ -33,7 +33,7 @@ impl DeployParam {
         access_denied_addresses: Vec<String>,
         meta_info: HashMap<String, String>,
     ) -> Result<Self, web3::contract::Error> {
-        // ファイルをブロックチェーンへアップロードする
+        // Read the file and compute hash for on-chain reference
         let file = match tokio::fs::read(&file).await {
             Ok(data) => data,
             Err(e) => panic!("Error reading file: {:?}", e),
@@ -129,8 +129,8 @@ impl Ethereum {
         let bytecode = include_str!("./Merchandise.bin").trim();
 
         let merchandise = Contract::deploy(self.web3.eth(), include_bytes!("./Merchandise.json"))?
-            .confirmations(0) // ブロックの確認数（即時反映）
-            .options(Options::default()) // オプション
+            .confirmations(0) // Number of block confirmations (immediate)
+            .options(Options::default()) // Options
             .execute(
                 bytecode,
                 (
@@ -141,7 +141,7 @@ impl Ethereum {
                     deploy_param.additional_info_keys.to_owned(),
                     deploy_param.additional_info_values.to_owned(),
                 ),
-                self.account, // デプロイ実行アカウント
+                self.account, // Deployment account
             )
             .await?;
 
@@ -187,7 +187,7 @@ impl Ethereum {
             .call("verify", (data_hash,), self.account, Options::default())
             .await;
 
-        // ステートの状態を見て成功か失敗かを判断する
+        // Determine success or failure by checking the state
         let state: Result<U256, web3::contract::Error> = contract
             .query("getState", (), self.account, Options::default(), None)
             .await;

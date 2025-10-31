@@ -44,9 +44,9 @@ const PUBKEY_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa
 const IOT_MARKET_CONTRACT_ADDRESS: &str = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 const PROCESS_RULE_FILE_PATH: &str = "settings/process_rule.json";
-const RAWDATA_DIR: &str = "raw_data"; // IoT機器からのデータの保存先
-const PROCESSED_DIR: &str = "processed_data"; // 加工データ(流通用データ)の保存先
-const DOWNLOAD_DIR: &str = "downloads"; // ダウンロードしたデータの保存先
+const RAWDATA_DIR: &str = "raw_data"; // Storage location for data from IoT devices
+const PROCESSED_DIR: &str = "processed_data"; // Storage location for processed (distribution) data
+const DOWNLOAD_DIR: &str = "downloads"; // Storage location for downloaded data
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -105,8 +105,8 @@ async fn main() -> AppResult<()> {
         let rules = rules.clone();
         loop {
             if let Some(file_path) = monitor_folder(RAWDATA_DIR).await {
-                println!("新しいファイルが作成されました: {:?}", file_path);
-                // ルールと照合する
+                println!("A new file has been created: {:?}", file_path);
+                // Match against rules
                 for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
                     let processer = matched_rules.parse_processer().unwrap();
                     let metadata = matched_rules.parse_metadata().unwrap();
@@ -166,25 +166,25 @@ async fn main() -> AppResult<()> {
         let stream = filter.stream(std::time::Duration::from_secs(2));
         futures::pin_mut!(stream);
         
-        // 購入時刻を保持するための共有変数
+        // Shared variable to hold the purchase timestamp
         let purchase_start_time = Arc::new(Mutex::new(Option::<std::time::Instant>::None));
         
         loop {
-            // loopでログを監視
+            // Monitor logs in a loop
             let log = match stream.next().await.unwrap() {
                 Ok(log) => log,
                 Err(e) => {
                     panic!("Error watching blockchain, {}", e);
                 }
             };
-            // Atomic Reference Counted を使ってクローンを抑制
+            // Use Arc (Atomic Reference Counted) to avoid excessive cloning
             let storage_client = storage_client.clone();
             let eth_client = eth_client.clone();
             let key_pair = rsa_keypair.clone();
             let deployed_files = deployed_files.clone();
             let purchase_time = purchase_start_time.clone();
 
-            // ログが来たらスレッドを立てて処理
+            // Spawn a task to handle each incoming log
             tokio::spawn(async move {
                 let account_address = H256::from(eth_client.account);
                 let topics = log.topics.clone();
@@ -193,7 +193,7 @@ async fn main() -> AppResult<()> {
                 let buyer = topics.get(2).unwrap();
                 let event_emitter = log.address;
 
-                // 購入処理発生 & 自身がデータ提供者の場合
+                // On purchase event and when we are the data provider
                 if owner == &account_address && event == &ethereum::topic::topic_purchase() {
                     println!("Your Product is bought by {}", buyer);
                     let upload_file_path = deployed_files.get(&event_emitter).await.unwrap();
@@ -231,10 +231,10 @@ async fn main() -> AppResult<()> {
                 if buyer == &account_address && event == &ethereum::topic::topic_purchase() {
                     println!("You bought a product of {}", owner);
                     let now = std::time::SystemTime::now();
-                    // 購入時刻を記録
+                    // Record the purchase time
                     *purchase_time.lock().unwrap() = Some(std::time::Instant::now());
                 }
-                // Upload処理発生 & 自身がデータ購入者の場合
+                // On upload event and when we are the data buyer
                 if buyer == &account_address && event == &ethereum::topic::topic_upload() {
                     let access_key = UploadEvent::new(&log).get_uri();
                     println!("Encript File path is ... {:?}", access_key);
@@ -246,7 +246,7 @@ async fn main() -> AppResult<()> {
                     match storage_client.download_file(&access_key).await {
                         Ok(response) => {
                             let download_path = format!("{}/{}", DOWNLOAD_DIR, response.file_name);
-                            // FIXME: ファイル形式に合わせて保存, simple-storageの改修が必要
+                            // FIXME: Save according to file format; simple-storage needs improvement
                             tokio::fs::write(&download_path, response.file)
                                 .await
                                 .unwrap();
@@ -262,7 +262,7 @@ async fn main() -> AppResult<()> {
                                 Ok(result) => {
                                     println!("Verification result: {}", result);
                                     
-                                    // 購入からの全体時間を計測
+                                    // Measure total time from purchase to verification
                                     if let Some(purchase_start) = *purchase_time.lock().unwrap() {
                                         let total_elapsed = purchase_start.elapsed();
                                         println!(
@@ -281,11 +281,11 @@ async fn main() -> AppResult<()> {
                         }
                     }
                 }
-                //　検証処理発生 & 自信がデータ提供者の場合
+                // On verification event and when we are the data provider
                 if owner == &account_address && event == &ethereum::topic::topic_verify() {
                     let result = !topics.get(3).unwrap().is_zero();
                     let contract_address = log.address;
-                    // FIXME: 検証に失敗したら、データの再アップロードをN回行う
+                    // FIXME: If verification fails, re-upload the data N times
                     match result {
                         true => {
                             println!("Verification is successful");
@@ -299,7 +299,7 @@ async fn main() -> AppResult<()> {
                             }
                         }
                         false => {
-                            // 再アップロードして繰り返す
+                            // Re-upload and retry
                             println!("Verification failed, retrying...");
                             // upload file to api
                             let upload_file_path =
@@ -313,7 +313,7 @@ async fn main() -> AppResult<()> {
                                     panic!("Error uploading file {}", e);
                                 }
                             };
-                            // FIX: pubkeyの取得
+                            // FIX: Obtain pubkey
                             let factory = Address::from_str(PUBKEY_CONTRACT_ADDRESS).unwrap();
                             let buyer: H160 = (*buyer).into();
 
@@ -351,7 +351,7 @@ async fn main() -> AppResult<()> {
 async fn monitor_folder(path: &str) -> Option<PathBuf> {
     let (tx, rx) = mpsc::channel();
 
-    // Watcher を作成して監視を開始
+    // Create watcher and start monitoring
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default()).ok()?;
     watcher
         .watch(Path::new(path), RecursiveMode::NonRecursive)

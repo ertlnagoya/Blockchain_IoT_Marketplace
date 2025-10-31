@@ -7,7 +7,7 @@
 	let endTime: string = '2025-06-30T12:20:00';
 	let latitude: string = '35.15430131582339';
 	let longitude: string = '136.9700924892541';
-	let radius: string = '50'; // デフォルト50m
+	let radius: string = '50'; // default 50m
 	let filterByTime: boolean = false;
 	let filterByLocation: boolean = false;
 	let filterByPeople: boolean = false;
@@ -15,7 +15,7 @@
 	let searchExecutionTime: number | null = null;
 	let isSearching: boolean = false;
 
-	// MetaMaskに接続する関数
+	// Function to connect to MetaMask
 	const connectToMetaMask = async () => {
 		const windowProvider = (window as any).ethereum;
 
@@ -31,7 +31,7 @@
 		}
 	};
 
-	// 購入機能
+	// Purchase function
 	const purchase = async (merchandiseData: any) => {
 		try {
 			const { provider, signer } = await connectToMetaMask();
@@ -42,14 +42,14 @@
 					value: ethers.parseEther(merchandiseData.price || '0.01')
 				});
 				
-				alert('購入処理を開始しました。トランザクションの確認をお待ちください...');
+				alert('Purchase started. Please wait for the transaction confirmation...');
 				await transactionResponse.wait(1);
-				alert('購入が完了しました！');
+				alert('Purchase completed!');
 			} else {
-				throw new Error('MetaMaskに接続してください');
+				throw new Error('Please connect to MetaMask');
 			}
 		} catch (error: any) {
-			alert(`購入エラー: ${error.message}`);
+			alert(`Purchase error: ${error.message}`);
 			console.error('Purchase error:', error);
 		}
 	};
@@ -59,21 +59,21 @@
 		searchExecutionTime = null;
 		const executionStartTime = performance.now();
 		
-		// ベースクエリを構築
+		// Build base query
 		let query = 'SELECT *';
 		let conditions: string[] = [];
 		
-		// 場所フィルタが有効な場合は距離も取得
+		// When location filter is enabled, also compute distance
 		if (filterByLocation) {
 			query += `, ST_Distance(location, ST_GeogFromText('POINT(${longitude} ${latitude})')) AS distance`;
 		}
 		
 		query += ' FROM ipfs_records';
 		
-		// 時間フィルタを追加
+		// Add time filter
 		if (filterByTime) {
 			if (!startTime || !endTime) {
-				alert('時間フィルタを有効にする場合は開始時刻と終了時刻を両方指定してください。');
+				alert('When enabling the time filter, please provide both start and end times.');
 				isSearching = false;
 				return;
 			}
@@ -81,10 +81,10 @@
 			conditions.push(`end_timestamp <= '${endTime}'`);
 		}
 		
-		// 場所フィルタを追加
+		// Add location filter
 		if (filterByLocation) {
 			if (!latitude || !longitude) {
-				alert('場所フィルタを有効にする場合は緯度と経度を両方指定してください。');
+				alert('When enabling the location filter, please provide both latitude and longitude.');
 				isSearching = false;
 				return;
 			}
@@ -92,17 +92,17 @@
 			conditions.push(`ST_DWithin(location, ST_GeogFromText('POINT(${longitude} ${latitude})'), ${radiusMeters})`);
 		}
 		
-		// 人の存在フィルタを追加
+		// Add people-existence filter
 		if (filterByPeople) {
 			conditions.push(`exist_people = ${peopleExist}`);
 		}
 		
-		// 条件を追加
+		// Append WHERE conditions
 		if (conditions.length > 0) {
 			query += ' WHERE ' + conditions.join(' AND ');
 		}
 		
-		// 場所フィルタが有効な場合は距離順にソート
+		// Order by distance when location filter is enabled
 		if (filterByLocation) {
 			query += ' ORDER BY distance';
 		}
@@ -134,16 +134,16 @@
 <div class="mt-8 flex flex-col items-center space-y-6">
 	<h2 class="text-2xl font-bold">IoT データ検索</h2>
 	
-	<!-- デバッグ情報 -->
+	<!-- Debug info -->
 	<div class="text-xs text-gray-600">
-		フィルタ状態: 時間={filterByTime}, 場所={filterByLocation}, 人={filterByPeople}
+		Filter states: time={filterByTime}, location={filterByLocation}, people={filterByPeople}
 	</div>
 	
-	<!-- 検索条件設定 -->
+	<!-- Search filters -->
 	<div class="bg-gray-50 p-6 rounded-lg space-y-4">
-		<h3 class="text-lg font-semibold text-black">検索条件</h3>
+		<h3 class="text-lg font-semibold text-black">Search Filters</h3>
 		
-		<!-- 時間フィルタ -->
+		<!-- Time filter -->
 		<div class="space-y-2">
 			<div class="flex items-center space-x-2">
 				<input
@@ -152,13 +152,13 @@
 					bind:checked={filterByTime}
 					class="rounded bg-white border-gray-300"
 				/>
-				<label for="filterTime" class="text-sm font-medium text-black cursor-pointer">時間で絞り込む</label>
+				<label for="filterTime" class="text-sm font-medium text-black cursor-pointer">Filter by time</label>
 			</div>
 			
 			{#if filterByTime}
 				<div class="flex space-x-4 ml-6">
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">開始時刻</label>
+						<label class="text-sm font-medium text-black">Start time</label>
 						<input
 							type="datetime-local"
 							bind:value={startTime}
@@ -166,7 +166,7 @@
 						/>
 					</div>
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">終了時刻</label>
+						<label class="text-sm font-medium text-black">End time</label>
 						<input
 							type="datetime-local"
 							bind:value={endTime}
@@ -177,7 +177,7 @@
 			{/if}
 		</div>
 		
-		<!-- 場所フィルタ -->
+		<!-- Location filter -->
 		<div class="space-y-2">
 			<div class="flex items-center space-x-2">
 				<input
@@ -186,33 +186,33 @@
 					bind:checked={filterByLocation}
 					class="rounded bg-white border-gray-300"
 				/>
-				<label for="filterLocation" class="text-sm font-medium text-black cursor-pointer">場所で絞り込む</label>
+				<label for="filterLocation" class="text-sm font-medium text-black cursor-pointer">Filter by location</label>
 			</div>
 			
 			{#if filterByLocation}
 				<div class="flex space-x-4 ml-6">
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">緯度</label>
+						<label class="text-sm font-medium text-black">Latitude</label>
 						<input
 							type="number"
 							step="0.000001"
 							bind:value={latitude}
-							placeholder="例: 35.6762"
+							placeholder="e.g.: 35.6762"
 							class="px-3 py-2 border rounded text-black"
 						/>
 					</div>
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">経度</label>
+						<label class="text-sm font-medium text-black">Longitude</label>
 						<input
 							type="number"
 							step="0.000001"
 							bind:value={longitude}
-							placeholder="例: 139.6503"
+							placeholder="e.g.: 139.6503"
 							class="px-3 py-2 border rounded text-black"
 						/>
 					</div>
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">半径 (m)</label>
+						<label class="text-sm font-medium text-black">Radius (m)</label>
 						<input
 							type="number"
 							step="1"
@@ -224,7 +224,7 @@
 			{/if}
 		</div>
 		
-		<!-- 人の存在フィルタ -->
+		<!-- People existence filter -->
 		<div class="space-y-2">
 			<div class="flex items-center space-x-2">
 				<input
@@ -233,7 +233,7 @@
 					bind:checked={filterByPeople}
 					class="rounded bg-white border-gray-300"
 				/>
-				<label for="filterPeople" class="text-sm font-medium text-black cursor-pointer">人の存在で絞り込む</label>
+				<label for="filterPeople" class="text-sm font-medium text-black cursor-pointer">Filter by people existence</label>
 			</div>
 			
 			{#if filterByPeople}
@@ -245,7 +245,7 @@
 							value={true}
 							name="peopleExist"
 						/>
-						<span class="text-sm text-black">人がいる</span>
+						<span class="text-sm text-black">People present</span>
 					</label>
 					<label class="flex items-center space-x-2">
 						<input
@@ -254,36 +254,36 @@
 							value={false}
 							name="peopleExist"
 						/>
-						<span class="text-sm text-black">人がいない</span>
+						<span class="text-sm text-black">No people</span>
 					</label>
 				</div>
 			{/if}
 		</div>
 		
-		<!-- 検索ボタン -->
+		<!-- Search button -->
 		<button 
 			class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
 			on:click={executeSearch}
 			disabled={isSearching}
 		>
 			{#if isSearching}
-				検索中...
+				Searching...
 			{:else}
-				検索実行
+				Run Search
 			{/if}
 		</button>
 		
-		<!-- 検索実行状態表示 -->
+		<!-- Search execution status -->
 		{#if isSearching}
 			<div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
 				<p class="text-blue-800 text-sm">
-					<span class="font-semibold">🔍 検索中...</span>
+					<span class="font-semibold">🔍 Searching...</span>
 				</p>
 			</div>
 		{:else if searchExecutionTime !== null}
 			<div class="bg-green-50 border border-green-200 rounded-lg p-3">
 				<p class="text-green-800 text-sm">
-					<span class="font-semibold">検索実行時間:</span> 
+					<span class="font-semibold">Execution time:</span> 
 					<span class="font-mono font-bold">{searchExecutionTime}ms</span>
 				</p>
 			</div>
@@ -295,15 +295,15 @@
 			<thead>
 				<tr>
 					<th class="px-2 py-1 text-black">CID</th>
-					<th class="px-2 py-1 text-black">開始時刻</th>
-					<th class="px-2 py-1 text-black">終了時刻</th>
-					<th class="px-2 py-1 text-black">位置情報</th>
-					<th class="px-2 py-1 text-black">人の存在</th>
+					<th class="px-2 py-1 text-black">Start time</th>
+					<th class="px-2 py-1 text-black">End time</th>
+					<th class="px-2 py-1 text-black">Location</th>
+					<th class="px-2 py-1 text-black">Prople</th>
 					{#if filterByLocation}
-						<th class="px-2 py-1 text-black">距離 (m)</th>
+						<th class="px-2 py-1 text-black">Distance (m)</th>
 					{/if}
-					<th class="px-2 py-1 text-black">IPFSデータ</th>
-					<th class="px-2 py-1 text-black">アクション</th>
+					<th class="px-2 py-1 text-black">IPFS Data</th>
+					<th class="px-2 py-1 text-black">Actions</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -313,7 +313,7 @@
 						<td class="px-2 py-1 text-black">{row.start_timestamp}</td>
 						<td class="px-2 py-1 text-black">{row.end_timestamp}</td>
 						<td class="px-2 py-1 text-black">{row.location}</td>
-						<td class="px-2 py-1 text-black">{row.exist_people ? 'あり' : 'なし'}</td>
+						<td class="px-2 py-1 text-black">{row.exist_people ? 'Yes' : 'No'}</td>
 						{#if filterByLocation}
 							<td class="px-2 py-1 text-black">
 								{row.distance ? Math.round(row.distance) : 'N/A'}
@@ -322,20 +322,20 @@
 						<td class="px-2 py-1 text-black">
 							{#if row.ipfs_data}
 								{#if row.ipfs_data.error}
-									<span class="text-red-600">エラー: {row.ipfs_data.error}</span>
+									<span class="text-red-600">Error: {row.ipfs_data.error}</span>
 								{:else if row.ipfs_data.type === 'text'}
 									<details>
-										<summary class="cursor-pointer text-blue-600">テキストデータ</summary>
+										<summary class="cursor-pointer text-blue-600">Text data</summary>
 										<pre class="mt-2 text-xs">{row.ipfs_data.content}</pre>
 									</details>
 								{:else}
 									<details>
-										<summary class="cursor-pointer text-blue-600">JSONデータ</summary>
+										<summary class="cursor-pointer text-blue-600">JSON data</summary>
 										<pre class="mt-2 text-xs">{JSON.stringify(row.ipfs_data, null, 2)}</pre>
 									</details>
 								{/if}
 							{:else}
-								<span class="text-gray-500">データなし</span>
+								<span class="text-gray-500">No data</span>
 							{/if}
 						</td>
 						<td class="px-2 py-1 text-black">
@@ -344,13 +344,13 @@
 									class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
 									on:click={() => purchase(row.ipfs_data)}
 								>
-									購入
+									Purchase
 								</button>
 								<div class="text-xs mt-1">
 									{row.ipfs_data.price || '0.01'} ETH
 								</div>
 							{:else}
-								<span class="text-gray-500 text-xs">購入不可</span>
+								<span class="text-gray-500 text-xs">Not purchasable</span>
 							{/if}
 						</td>
 					</tr>

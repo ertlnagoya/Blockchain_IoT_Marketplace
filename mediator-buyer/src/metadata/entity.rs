@@ -10,7 +10,7 @@ pub enum MetadataType {
 }
 
 impl MetadataType {
-    /// メタデータ関数を呼び出し (ジェネリクス化)
+    /// Call the metadata function (generic)
     pub fn create_metadata<P: AsRef<Path>>(&self, file_path: P) -> Result<Metadata, String> {
         match self {
             MetadataType::Basic => create_basic_metadata(file_path),

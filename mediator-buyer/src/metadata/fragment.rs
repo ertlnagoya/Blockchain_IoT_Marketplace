@@ -11,7 +11,7 @@ pub fn get_file_format(path: &Path) -> String {
 pub fn get_file_size(path: &Path) -> Result<String, String> {
     fs::metadata(path)
         .map(|metadata| metadata.len().to_string())
-        .map_err(|_| format!("ファイルサイズの取得に失敗しました: {}", path.display()))
+        .map_err(|_| format!("Failed to get file size: {}", path.display()))
 }
 
 pub fn get_creation_date(path: &Path) -> Result<String, String> {
@@ -25,5 +25,5 @@ pub fn get_creation_date(path: &Path) -> Result<String, String> {
                     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
                 })
         })
-        .map_err(|_| format!("作成日時の取得に失敗しました: {}", path.display()))
+        .map_err(|_| format!("Failed to get creation date: {}", path.display()))
 }

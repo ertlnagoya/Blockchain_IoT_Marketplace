@@ -2,7 +2,7 @@ use postgres::{Client, NoTls};
 use std::process::Command;
 
 fn check_ipfs_access() {
-    // "ipfs --version" コマンドでIPFSがインストールされているか確認
+    // Check IPFS availability via the IPFS API version endpoint
     let output = Command::new("curl")
         .arg("-s")
         .arg("http://host.docker.internal:5001/api/v0/version")
@@ -13,18 +13,18 @@ fn check_ipfs_access() {
     match output {
         Ok(output) if output.status.success() => {
             println!(
-                "IPFSにアクセスできます: {}",
+                "IPFS accessible: {}",
                 String::from_utf8_lossy(&output.stdout)
             );
         }
         Ok(output) => {
             eprintln!(
-                "IPFSコマンドは実行されましたが、エラーが発生しました: {}",
+                "IPFS command executed but an error occurred: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
         }
         Err(e) => {
-            eprintln!("IPFSコマンドにアクセスできません: {}", e);
+            eprintln!("Cannot access IPFS command: {}", e);
         }
     }
 }
@@ -40,16 +40,16 @@ fn fetch_ipfs_cid_content(cid: &str) {
 
     match output {
         Ok(output) if output.status.success() => {
-            println!("CIDの内容:\n{}", String::from_utf8_lossy(&output.stdout));
+            println!("Content of CID:\n{}", String::from_utf8_lossy(&output.stdout));
         }
         Ok(output) => {
             eprintln!(
-                "CID取得コマンドは実行されましたが、エラーが発生しました: {}",
+                "CID fetch command executed but an error occurred: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
         }
         Err(e) => {
-            eprintln!("CID取得コマンドにアクセスできません: {}", e);
+            eprintln!("Cannot access CID fetch command: {}", e);
         }
     }
 }
@@ -61,7 +61,7 @@ fn check_postgres_connection() {
     ) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("PostgreSQLに接続できません: {}", e);
+            eprintln!("Cannot connect to PostgreSQL: {}", e);
             return;
         }
     };
@@ -69,16 +69,16 @@ fn check_postgres_connection() {
     match client.simple_query("SELECT version();") {
         Ok(rows) => {
             for row in rows {
-                println!("PostgreSQLバージョン情報: {:?}", row);
+                println!("PostgreSQL version info: {:?}", row);
             }
         }
         Err(e) => {
-            eprintln!("PostgreSQLクエリ実行エラー: {}", e);
+            eprintln!("PostgreSQL query execution error: {}", e);
         }
     }
 }
 fn main() {
-    let cid = "QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2j"; // 例としてCIDを指定
+    let cid = "QmXrejoiiPLztK98sXm2ytHBLyyRJkZbxR8wX2mf5skj2j"; // Example CID
     check_ipfs_access();
     fetch_ipfs_cid_content(cid);
     check_postgres_connection();

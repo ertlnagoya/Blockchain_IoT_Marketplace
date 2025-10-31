@@ -48,7 +48,7 @@
 	<div class="flex flex-col md:flex-row">
 		<div class="relative flex items-center md:w-1/2">
 			<img src={productImage} alt="M5Stack" class="w-full rounded-lg" />
-			<!-- 上に重ねる -->
+			<!-- Overlay on top -->
 			{#if data.state === 1n}
 				<img
 					src={Inprogress}
@@ -64,7 +64,7 @@
 			{/if}
 		</div>
 		<div class="py-6 md:w-1/2 md:p-4">
-			<h2 class="text-2xl font-bold">RaspberryPi 加工データ</h2>
+			<h2 class="text-2xl font-bold">RaspberryPi Processed Data</h2>
 			<div class="py-2 text-gray-200">
 				<p>
 					This dataset is derived from video data captured by a camera module installed on a

@@ -15,13 +15,13 @@ impl DeployedMerchandise {
         }
     }
 
-    /// データを非同期で追加
+    /// Add data asynchronously
     pub async fn insert(&self, key: String, value: PathBuf) {
         let mut db = self.db.write().await;
         db.insert(key, value);
     }
 
-    /// データを非同期で取得
+    /// Get data asynchronously
     pub async fn get(&self, key: &String) -> Option<PathBuf> {
         let db = self.db.read().await;
         db.get(key).cloned()

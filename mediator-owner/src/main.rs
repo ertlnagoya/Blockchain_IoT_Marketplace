@@ -70,7 +70,7 @@ impl Config {
     }
 }
 
-/// JSONファイルをIPFSへアップロード
+/// Upload a JSON file to IPFS
 fn upload_json_to_ipfs<P: AsRef<Path>>(json_path: P) -> Option<String> {
     let path_str = json_path.as_ref().to_str().unwrap();
 
@@ -85,7 +85,7 @@ fn upload_json_to_ipfs<P: AsRef<Path>>(json_path: P) -> Option<String> {
 
     match output {
         Ok(output) if output.status.success() => {
-            // IPFSのCIDを取得
+            // Get CID from IPFS
             let v: serde_json::Value = serde_json::from_slice(&output.stdout)
                 .expect("Failed to parse IPFS response");
             let cid = v.get("Hash")
@@ -97,46 +97,46 @@ fn upload_json_to_ipfs<P: AsRef<Path>>(json_path: P) -> Option<String> {
         }
         Ok(output) => {
             eprintln!(
-                "⚠️ アップロード失敗: {}",
+                "⚠️ Upload failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
             None
         }
         Err(e) => {
-            eprintln!("❌ curlコマンド実行エラー: {}", e);
+            eprintln!("❌ curl command execution error: {}", e);
             None
         }
     }
 }
 
 fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppResult<()> {
-    // JSONファイルを読み込む
+    // Read the JSON file
     let json_content = std::fs::read_to_string(&json_path)
-        .map_err(|e| errors::AppError::DatabaseError(format!("JSONファイル読み込み失敗: {}", e)))?;
+        .map_err(|e| errors::AppError::DatabaseError(format!("Failed to read JSON file: {}", e)))?;
     let json_data: serde_json::Value = serde_json::from_str(&json_content)
-        .map_err(|e| errors::AppError::DatabaseError(format!("JSONパース失敗: {}", e)))?;
+        .map_err(|e| errors::AppError::DatabaseError(format!("Failed to parse JSON: {}", e)))?;
 
-    // 必要なフィールドを抽出
+    // Extract required fields
     let start_timestamp = json_data.get("start_timestamp")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| errors::AppError::DatabaseError("start_timestampが見つかりません".to_string()))?;
+        .ok_or_else(|| errors::AppError::DatabaseError("start_timestamp not found".to_string()))?;
     let end_timestamp = json_data.get("end_timestamp")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| errors::AppError::DatabaseError("end_timestampが見つかりません".to_string()))?;
+        .ok_or_else(|| errors::AppError::DatabaseError("end_timestamp not found".to_string()))?;
     let location = json_data.get("location")
         .and_then(|v| v.as_object())
-        .ok_or_else(|| errors::AppError::DatabaseError("locationが見つかりません".to_string()))?;
+        .ok_or_else(|| errors::AppError::DatabaseError("location not found".to_string()))?;
     let latitude = location.get("latitude")
         .and_then(|v| v.as_f64())
-        .ok_or_else(|| errors::AppError::DatabaseError("latitudeが見つかりません".to_string()))?;
+        .ok_or_else(|| errors::AppError::DatabaseError("latitude not found".to_string()))?;
     let longitude = location.get("longitude")
         .and_then(|v| v.as_f64())
-        .ok_or_else(|| errors::AppError::DatabaseError("longitudeが見つかりません".to_string()))?;
+        .ok_or_else(|| errors::AppError::DatabaseError("longitude not found".to_string()))?;
     let exist_people = json_data.get("exist_person")
         .and_then(|v| v.as_bool())
-        .ok_or_else(|| errors::AppError::DatabaseError("exist_personが見つかりません".to_string()))?;
+        .ok_or_else(|| errors::AppError::DatabaseError("exist_person not found".to_string()))?;
 
-    // SQL文を組み立て
+    // Build SQL
     let sql = format!(
         "INSERT INTO ipfs_records (cid, start_timestamp, end_timestamp, location, exist_people) \
         VALUES ('{}', '{}', '{}', ST_SetSRID(ST_MakePoint({}, {}), 4326), '{}') \
@@ -144,7 +144,7 @@ fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppR
         cid, start_timestamp, end_timestamp, longitude, latitude, exist_people
     );
 
-    // psqlコマンドで実行
+    // Execute with psql
     let output = Command::new("psql")
         .arg("-h")
         .arg("host.docker.internal")
@@ -159,22 +159,22 @@ fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppR
 
     match output {
         Ok(output) if output.status.success() => {
-            // println!("ipfs_recordsテーブルにデータを挿入しました");
+            // println!("Inserted data into ipfs_records table");
             Ok(())
         }
         Ok(output) => {
             eprintln!(
-                "⚠️ PostgreSQLへの挿入失敗: {}",
+                "⚠️ Failed to insert into PostgreSQL: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
             Err(errors::AppError::DatabaseError(
-                "PostgreSQLへの挿入失敗".to_string(),
+                "Failed to insert into PostgreSQL".to_string(),
             ))
         }
         Err(e) => {
-            eprintln!("❌ PostgreSQLコマンド実行エラー: {}", e);
+            eprintln!("❌ PostgreSQL command execution error: {}", e);
             Err(errors::AppError::DatabaseError(
-                "PostgreSQLコマンド実行エラー".to_string(),
+                "PostgreSQL command execution error".to_string(),
             ))
         }
     }
@@ -183,17 +183,17 @@ fn upload_json_info_to_postgres<P: AsRef<Path>>(json_path: P, cid: &str) -> AppR
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
-    // コマンドライン引数を取得
+    // Get command-line arguments
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
-        eprintln!("使い方: {} <YAMLファイルのパス>", args[0]);
+        eprintln!("Usage: {} <path to YAML file>", args[0]);
         std::process::exit(1);
     }
 
     let filepath = &args[1];
 
-    // ファイル読み込み
+    // Read file
     let config = Arc::new(match Config::from_yaml_file(filepath) {
         Ok(cfg) => {
             println!("API URL: {}", cfg.api_url);
@@ -201,7 +201,7 @@ async fn main() -> AppResult<()> {
             cfg
         }
         Err(e) => {
-            eprintln!("設定ファイル読み込みエラー: {}", e);
+            eprintln!("Failed to read config file: {}", e);
             std::process::exit(1);
         }
     });
@@ -281,7 +281,7 @@ async fn main() -> AppResult<()> {
                         eprintln!("Corresponding mp4 file does not exist for json: {:?}", path);
                         continue;
                     }
-                    // ここでjsonファイルを読み込む処理を追加
+                    // Add processing to read the JSON file here
                     let json_content = match fs::read_to_string(&path) {
                         Ok(content) => content,
                         Err(e) => {
@@ -290,7 +290,7 @@ async fn main() -> AppResult<()> {
                         }
                     };
 
-                    // JSONの内容をデシリアライズ
+                    // Deserialize JSON contents
                     let mut json_data: serde_json::Value = match serde_json::from_str(&json_content) {
                         Ok(data) => data,
                         Err(e) => {
@@ -323,7 +323,7 @@ async fn main() -> AppResult<()> {
                         };
                         let elapsed = start.elapsed();
                         elapsed_times[0] += elapsed;
-                        // デプロイするファイルの情報を取得（ファイルサイズや作成日時など）
+                        // Get info of the file to be deployed (file size, creation date, etc.)
                         let meta_info = metadata.create_metadata(&processed_file).unwrap();
                         let contract_info = matched_rules.get_contract();
                         let deploy_param = DeployParam::new(
@@ -361,7 +361,7 @@ async fn main() -> AppResult<()> {
                         }
                         let elapsed = start.elapsed();
                         elapsed_times[1] += elapsed;
-                        // JSONをprocessed_dirに出力
+                        // Output JSON to processed_dir
                         let processed_json_path = Path::new(&config_clone.processed_dir)
                             .join(path.file_name().unwrap());
                         match fs::write(&processed_json_path, serde_json::to_string_pretty(&json_data).unwrap()) {
@@ -371,14 +371,14 @@ async fn main() -> AppResult<()> {
                             }
                         }
                         
-                        // IPFSにアップロード
+                        // Upload to IPFS
                         let start = Instant::now();
                         let cid = upload_json_to_ipfs(&processed_json_path);
                         // println!("Uploaded JSON to IPFS with CID: {:?}", cid);
                         let elapsed = start.elapsed();
                         elapsed_times[2] += elapsed;
 
-                        // PostgreSQLにアップロード
+                        // Upload to PostgreSQL
                         let start = Instant::now();
                         if let Some(cid) = cid {
                             if let Err(e) = upload_json_info_to_postgres(&processed_json_path, &cid) {
@@ -414,21 +414,21 @@ async fn main() -> AppResult<()> {
         let stream = filter.stream(std::time::Duration::from_secs(2));
         futures::pin_mut!(stream);
         loop {
-            // loopでログを監視
+            // Monitor logs in a loop
             let log = match stream.next().await.unwrap() {
                 Ok(log) => log,
                 Err(e) => {
                     panic!("Error watching blockchain, {}", e);
                 }
             };
-            // Atomic Reference Counted を使ってクローンを抑制
+            // Use Arc (Atomic Reference Counted) to avoid excessive cloning
             let storage_client = storage_client.clone();
             let eth_client = eth_client.clone();
             let key_pair = rsa_keypair.clone();
             let deployed_files = deployed_files.clone();
             let config = config.clone();
 
-            // ログが来たらスレッドを立てて処理
+            // Spawn a task to handle each incoming log
             tokio::spawn(async move {
                 let account_address = H256::from(eth_client.account);
                 let topics = log.topics.clone();
@@ -437,7 +437,7 @@ async fn main() -> AppResult<()> {
                 let buyer = topics.get(2).unwrap();
                 let event_emitter = log.address;
 
-                // 購入処理発生 & 自身がデータ提供者の場合
+                // On purchase event and when we are the data provider
                 if owner == &account_address && event == &ethereum::topic::topic_purchase() {
                     println!("Your Product is bought by {}", buyer);
                     println!("Event emitter is ... {:?}", event_emitter);
@@ -476,7 +476,7 @@ async fn main() -> AppResult<()> {
                 if buyer == &account_address && event == &ethereum::topic::topic_purchase() {
                     println!("You bought a product of {}", owner);
                 }
-                // Upload処理発生 & 自身がデータ購入者の場合
+                // On upload event and when we are the data buyer
                 if buyer == &account_address && event == &ethereum::topic::topic_upload() {
                     let access_key = UploadEvent::new(&log).get_uri();
                     println!("Encript File path is ... {:?}", access_key);
@@ -488,7 +488,7 @@ async fn main() -> AppResult<()> {
                     match storage_client.download_file(&access_key).await {
                         Ok(response) => {
                             let download_path = format!("{}/{}", config.download_dir.clone(), response.file_name);
-                            // FIXME: ファイル形式に合わせて保存, simple-storageの改修が必要
+                            // FIXME: Save according to file format; simple-storage needs improvement
                             tokio::fs::write(&download_path, response.file)
                                 .await
                                 .unwrap();
@@ -514,11 +514,11 @@ async fn main() -> AppResult<()> {
                         }
                     }
                 }
-                //　検証処理発生 & 自信がデータ提供者の場合
+                // On verification event and when we are the data provider
                 if owner == &account_address && event == &ethereum::topic::topic_verify() {
                     let result = !topics.get(3).unwrap().is_zero();
                     let contract_address = log.address;
-                    // FIXME: 検証に失敗したら、データの再アップロードをN回行う
+                    // FIXME: If verification fails, re-upload the data N times
                     match result {
                         true => {
                             println!("Verification is successful");
@@ -532,7 +532,7 @@ async fn main() -> AppResult<()> {
                             }
                         }
                         false => {
-                            // 再アップロードして繰り返す
+                            // Re-upload and retry
                             println!("Verification failed, retrying...");
                             // upload file to api
                             let upload_file_path =
@@ -546,7 +546,7 @@ async fn main() -> AppResult<()> {
                                     panic!("Error uploading file {}", e);
                                 }
                             };
-                            // FIX: pubkeyの取得
+                            // FIX: Obtain pubkey
                             let addr2 = config.pubkey_contract_address.clone();
                             let factory = Address::from_str(&addr2).unwrap();
                             let buyer: H160 = (*buyer).into();
@@ -585,7 +585,7 @@ async fn main() -> AppResult<()> {
 async fn monitor_folder(path: &str) -> Option<PathBuf> {
     let (tx, rx) = mpsc::channel();
 
-    // Watcher を作成して監視を開始
+    // Create watcher and start monitoring
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default()).ok()?;
     watcher
         .watch(Path::new(path), RecursiveMode::NonRecursive)

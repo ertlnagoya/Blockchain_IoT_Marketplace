@@ -1,4 +1,4 @@
-### 準備
+### Preparation
 
 ```bash
 pip install -r requirements.txt

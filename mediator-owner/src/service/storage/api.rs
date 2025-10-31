@@ -39,7 +39,7 @@ impl StorageClient {
         let url = format!("{}/upload", self.base_url);
         let file = tokio::fs::read(file_path.as_ref()).await.unwrap();
 
-        // Partを使用してmultipart::Formを作成
+        // Create multipart::Form using Part
         let file_name = file_path
             .as_ref()
             .file_name()
@@ -50,7 +50,7 @@ impl StorageClient {
         let form = reqwest::multipart::Form::new().part("file", part);
 
         let res = self.client.post(&url).multipart(form).send().await?;
-        // FIXME: この部分はエラーハンドリングが必要
+        // FIXME: Error handling needed here
         let res = res.json::<ResJson>().await?;
         Ok(res.upload_path)
     }

@@ -8,7 +8,7 @@ def compress_video(input_path, output_path, target_width, target_height, target_
     cap = cv2.VideoCapture(input_path)
 
     if not cap.isOpened():
-        raise FileNotFoundError(f"動画ファイルを開けませんでした: {input_path}")
+        raise FileNotFoundError(f"Could not open video file: {input_path}")
 
     original_fps = int(cap.get(cv2.CAP_PROP_FPS))
     frame_interval = max(1, original_fps // target_fps)
@@ -34,12 +34,12 @@ def compress_video(input_path, output_path, target_width, target_height, target_
 
 
 def main():
-    parser = argparse.ArgumentParser(description="動画の解像度を変更して保存")
-    parser.add_argument("--input_video", required=True, help="入力動画ファイルのパス")
-    parser.add_argument("--output_dir", required=True, help="出力ディレクトリ")
-    parser.add_argument("--width", type=int, default=640, help="出力動画の幅")
-    parser.add_argument("--height", type=int, default=360, help="出力動画の高さ")
-    parser.add_argument("--fps", type=int, default=12, help="出力動画のフレームレート")
+    parser = argparse.ArgumentParser(description="Resize video and save")
+    parser.add_argument("--input_video", required=True, help="Path to input video file")
+    parser.add_argument("--output_dir", required=True, help="Output directory")
+    parser.add_argument("--width", type=int, default=640, help="Output video width")
+    parser.add_argument("--height", type=int, default=360, help="Output video height")
+    parser.add_argument("--fps", type=int, default=12, help="Output video frame rate")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
