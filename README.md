@@ -9,70 +9,94 @@
 ![Svelte](https://img.shields.io/badge/svelte-%23f1413d.svg?style=for-the-badge&logo=svelte&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-## 引継ぎ情報
+<table>
+	<thead>
+    	<tr>
+      		<th style="text-align:center">English</th>
+      		<th style="text-align:center"><a href="README_ja.md">日本語</a></th>
+    	</tr>
+  	</thead>
+</table>
 
-ブランチ`0704-batch-purchase`で、バッチ購入機能を実装しようとしましたが、失敗しました。  
-バッチ購入機能は、複数の商品を一度のコントラクトで購入できる機能です。
+## Overview
 
-## 概要
+Proof of Concept (PoC) for a decentralized demand-supply matching system that supports data distribution.  
+You can simulate the flow of IoT device data using blockchain technology.
 
-データ流通を支援する分散型需給マッチングシステムのPoC。ブロックチェーンを用いたIoT機器のデータ流通を追体験できる。
-[Blockchain_IoT_Marketplace](https://github.com/ertlnagoya/Blockchain_IoT_Marketplace)に、デプロイされた商品の検索機能を加えたもの。
+### Workflow for Data Distribution
 
-## requirements
-
-- Docker
-- VSCode (Extensions：Docker+DevContainers)
-
-## データセットの準備
-
-`metadata_generator/README.md`を参照してください。
-
-## 起動
-
-### 1. リポジトリをクローン
-
-```bash
-git clone git@github.com:ertlnagoya/Blockchain_IoT_Marketplace_enshu_2025.git
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Mediator(IoTOwner)
+    actor iotOwner as IoT Owner
+    participant Merchandise
+    participant IoTMarketplace as Marketplace
+    participant Frontend as UI Application
+    actor buyer as Data Buyer
+    participant Mediator(buyer)
+    Mediator(IoTOwner)->>IoTMarketplace: Deploy
+    Note right of Mediator(IoTOwner): Metadata like hash values
+    IoTMarketplace->>Merchandise: Constructor
+    buyer->>Frontend: Data purchase request
+    Note left of buyer: Signature via wallet
+    Frontend->>Merchandise: purchase
+    Mediator(buyer)->>Mediator(IoTOwner): Request actual data
+    Mediator(buyer)->>Mediator(buyer): Hash()
+    Mediator(buyer)->>Merchandise: verify()
+    Mediator(IoTOwner)->>Merchandise: withdraw()
 ```
 
-### 2. hardhat(ブロックチェーンの)セットアップ
+## Requirements
+
+- Docker  
+- VSCode (Extensions: Docker + DevContainers)
+
+## Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone --recursive https://github.com/ertlnagoya/Blockchain_IoT_Marketplace.git
+```
+
+### 2. Setup hardhat (blockchain tool)
 
 ```bash
 cd iot-market
 code .
 ```
 
-VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選択してコンテナに入る。
+After opening in VSCode, select `> DevContainer: Rebuild and Reopen in Container` to enter the container.
 
-続いて、以下のコマンドを実行
+Then execute the following command:
 
 ```bash
 npx hardhat node
 ```
 
-これによって、ローカルネットワークが起動します。
+This will start the local blockchain network.
 
-別のターミナルを開いて、以下のコマンドを実行
+Open another terminal and run:
 
 ```bash
 npx hardhat run scripts/deployMerchandiseWithIoTMarket.ts --network localhost
 ```
 
-これによってローカルネットワークに、IoT Marketといくつかのサンプルデータがデプロイされます。  
-（注意）コントラクトのデプロイは不安定で、コントラクト名が`Unrecognized Contract`になる失敗がある（DevContainer作成直後は失敗する印象）。  
-デプロイしたコントラクト名が正常に表示されていない場合、`npx hardhat node`からやり直す。
+This will deploy the IoT Market and several sample data sets on the local network.  
+**Note:** Deployment can be unstable, and the contract name may appear as `UnrecognizedContract`. (This often happens right after creating the DevContainer.)  
+If the deployed contract name does not appear correctly, restart from `npx hardhat node`.
 
-### 3. Metamaskのセットアップ
+### 3. Setup Metamask
 
-ブラウザの拡張機能である[MetaMask](https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn?hl=ja&utm_source=ext_sidebar)をインストールしてください。  
-次にMetaMaskの新規ウォレットを作成してください（パスワードは簡易で覚えやすい`password`を推奨、ここで作成したウォレットは実験では使わないから。）。  
-ウオレットの保護は`後で通知`でスキップしてください。  
+Install [MetaMask](https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn?hl=ja&utm_source=ext_sidebar) as a browser extension.  
+Then, create a new MetaMask wallet (for testing purposes, we recommend using a simple password like `password`).  
+Skip wallet backup protection by selecting “Remind me later.”
 
-ブロックチェーンのネットワークを追加してください。  
-![How to add a network](./images/how_to_network.png)  
+Add the blockchain network:  
+![How to add a network](./images/how_to_network.png)
 
-下記の4つの秘密鍵で、アカウントを追加してください。  
+Add accounts using the following four private keys:
 
 ```txt
 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
@@ -90,94 +114,87 @@ npx hardhat run scripts/deployMerchandiseWithIoTMarket.ts --network localhost
 0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6
 ```
 
-参考：[Ethereumのローカルノードを立ち上げて、MetaMaskも使ってみる (hardhat) #Ubuntu - Qiita](https://qiita.com/middle_aged_rookie_programmer/items/26c3d6667c7d6514c1de)
+Reference: [Running a local Ethereum node with MetaMask (hardhat) #Ubuntu - Qiita](https://qiita.com/middle_aged_rookie_programmer/items/26c3d6667c7d6514c1de)
 
-### 4. フロントエンドのセットアップ
+### 4. Setup Frontend
 
 ```bash
 cd iot-market-ui
 code .
 ```
 
-VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選択してコンテナに入る。
+Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.
 
-続いて、以下のコマンドを実行
+Then run:
 
 ```bash
 npm run dev
 ```
 
-`localhost:5173`にアクセスすると、フロントエンドが表示されます。
+Access `localhost:5173` to view the frontend.
 
-### 5. ストレージサーバーのセットアップ
+### 5. Setup Storage Server
 
 ```bash
 cd simple-storage
 code .
 ```
 
-VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選択してコンテナに入る。
+Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.
 
-続いて、以下のコマンドを実行
+Then run:
 
 ```bash
 cargo run
 ```
 
-これによって、ストレージサーバーが起動します。ストレージサーバーはポート3000番で待ち受けます。
+This will start the storage server. The server will listen on port 3000.
 
-### 6. IPFS, PostgreSQLのセットアップ
-
-`ipfs/README.md`を参照してください。
-
-### 7. Mediator(owner)のセットアップ
+### 6. Setup Mediator (owner)
 
 ```bash
 cd mediator-owner
-docker compose up -d
+code .
 ```
 
-これで、Mediatorを複数起動させるためのコンテナを起動します。
+Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.  
+The required Python libraries will be automatically installed via the `postCreateCommand` in `mediator-owner/.devcontainer/devcontainer.json`.
+
+Then run:
 
 ```bash
-docker exec owner cargo build
+cargo run
 ```
 
-これで、Mediatorをビルドします。
+This will start the Mediator process.  
+The owner is responsible for deploying merchandise and uploading files to the storage server.
+
+### 7. Setup Mediator (buyer)
 
 ```bash
-docker exec owner python3 -u scripts/run.py
+cd mediator-buyer
+code .
 ```
 
-これで、Mediatorが複数起動します。
-ownerは商品のデプロイとストレージサーバーへのファイルのアップロードを行います。
+Follow the same steps as in step 6 to set up the buyer mediator.
 
-### 8. Mediator(buyer)のセットアップ
+### 8. Make a Purchase
 
-VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選択してコンテナに入る。
+Place an mp4 file into `raw_data` in the Mediator(owner) directory to trigger recognition of a new video.  
+**Note:** File event notifications are unstable on Docker. If events are not detected, restart `cargo run` in Mediator(owner). You should see log output like `watcher's event.kind: ...` when successful.
 
-続いて、以下のコマンドを実行
+Access `localhost:5173` and switch the MetaMask account to the one starting with UUID `0x3c`.  
+Then, purchase the product deployed by the Mediator(owner).  
+If everything is set up correctly, the buyer will receive the event and download the file to `downloads/` from the storage server.
 
-```bash
-cargo run --bin mediator-b
-```
-
-これで、Mediatorが起動します。
-buyerはUIで購入した商品のダウンロードを行います。
-
-### 9. 購入手続きを行う
-
-`localhost:5173`にアクセスし、metamaskでアカウントをbuyerのもの（UUIDが`0x3c`で始まるもの）に切り替えてください。  
-その後、mediator(owner)の実行によってデプロイされた商品を購入してください。  
-UIで検索し、検索にヒットした商品をそれぞれ購入できます。
-正しくセットアップされていれば、buyerはイベントをキャッチしてストレージサーバーから`downloads/`にファイルをダウンロードするはずです。
+![How it works](./images/how_it_works.png)
 
 ## Tips
 
-- システムを再起動すると、ローカルネットワークのブロックとMetaMaskが持つブロックがずれることがある
-  - 解決するときの手順
-    1. MetaMaskの設定->高度な設定->アクティビティタブのデータを消去
-    2. ブラウザを閉じる
-    3. DevContainerを再起動し、各種コンポーネントを起動
-    4. ブラウザでMetaMaskを開き、ログイン
-    5. それぞれのアカウントのデポジットは回復しているはず
+- If you restart the system, the block state in the local network and MetaMask may become unsynchronized, causing contract execution to fail.  
+  - Steps to recover:
+    1. In MetaMask: Settings → Advanced → Clear activity tab data
+    2. Close the browser
+    3. Restart the DevContainer and all components
+    4. Open MetaMask in the browser and log in
+    5. Deposits in each account should recover
