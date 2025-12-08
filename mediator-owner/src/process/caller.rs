@@ -83,7 +83,7 @@ fn check_script_existance(file_path: &str) -> io::Result<&Path> {
 
 /// Extract a file path from the standard output string and return it as a `PathBuf`
 fn extract_output_path(stdout: &str) -> Option<PathBuf> {
-    let re = Regex::new(r".*\.(mp4|jpg|txt|zip)$").unwrap();
+    let re = Regex::new(r".*\.(mp4|jpg|txt|zip|html)$").unwrap();
 
     let file_path = stdout
         .lines()
