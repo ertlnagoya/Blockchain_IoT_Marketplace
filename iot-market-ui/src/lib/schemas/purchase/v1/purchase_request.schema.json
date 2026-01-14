@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.example.com/purchase/v1/purchase_request.schema.json",
+  "title": "PurchaseRequest",
+  "type": "object",
+  "required": ["requestID", "consumerDID", "issuedAt", "nonce", "proof"],
+  "properties": {
+    "requestID": { "type": "string" },
+    "consumerDID": { "type": "string" },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string" },
+    "datasetID": { "type": "string" },
+    "accessType": { "type": "string" },
+    "zkAccessLevelClaim": {
+      "$ref": "https://schemas.example.com/ssi/v1/zk_access_level_claim.schema.json"
+    },
+    "proof": {
+      "type": "object",
+      "required": ["type", "alg", "kid", "jws"],
+      "properties": {
+        "type": { "type": "string", "const": "JWS" },
+        "alg": { "type": "string", "const": "EdDSA" },
+        "kid": { "type": "string" },
+        "jws": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": true
+}

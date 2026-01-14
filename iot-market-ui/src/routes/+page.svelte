@@ -1,7 +1,22 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { ethers } from 'ethers';
 	import { Merchandise__factory } from '../types/typechain-types/index.js';
-	
+
+	import { sendPurchaseRequest } from '$lib/purchase/send';
+	import { signPurchasePayloadJWS } from '$lib/purchase/sign';
+	import { consumerDID, consumerSeedB64 } from '$lib/config/consumer';
+	import { defaultProviderEndpoint, providerPortalUrl } from '$lib/config/providers'; 
+	import { verifyProviderResponse } from '$lib/purchase/verifyPurchaseResponse';
+	import { providerVerification } from '$lib/stores/providerVerification';
+	import {
+		setPendingPurchase,
+		getPendingPurchase,
+		clearPendingPurchase,
+		isAutoPurchaseFlagSet,
+		clearAutoPurchaseFlag
+	} from '$lib/purchase/pending';
+
 	let queryResult: any = null;
 	let startTime: string = '2025-06-30T08:00:00';
 	let endTime: string = '2025-06-30T12:20:00';
@@ -14,6 +29,14 @@
 	let peopleExist: boolean = true;
 	let searchExecutionTime: number | null = null;
 	let isSearching: boolean = false;
+	const MIN_LEVEL = 2;
+	let autoPurchaseAttempted = false;
+
+	const redirectToProviderPortal = () => {
+		if (typeof window !== 'undefined') {
+			window.location.href = providerPortalUrl;
+		}
+	};
 
 	// Function to connect to MetaMask
 	const connectToMetaMask = async () => {
@@ -31,28 +54,114 @@
 		}
 	};
 
-	// Purchase function
-	const purchase = async (merchandiseData: any) => {
+	// generate time window and nonce
+	const nowISO = () => new Date().toISOString();
+	const genNonce = (n = 32) =>
+		Array.from(crypto.getRandomValues(new Uint8Array(n)))
+			.map((x) => x.toString(16).padStart(2, '0'))
+			.join('');
+
+	// row 含 cid 与 ipfs_data
+	const purchase = async (row: any) => {
 		try {
-			const { provider, signer } = await connectToMetaMask();
-			const merchandise = Merchandise__factory.connect(merchandiseData.address, signer);
-			
-			if (signer) {
-				const transactionResponse = await merchandise.purchase({
-					value: ethers.parseEther(merchandiseData.price || '0.01')
+			const level = Number($providerVerification.level ?? 0);
+			if (level < MIN_LEVEL) {
+				setPendingPurchase({
+					datasetCID: row?.cid,
+					ipfsData: row?.ipfs_data ?? null,
+					source: 'search'
 				});
-				
-				alert('Purchase started. Please wait for the transaction confirmation...');
-				await transactionResponse.wait(1);
-				alert('Purchase completed!');
-			} else {
-				throw new Error('Please connect to MetaMask');
+				alert('Please finish the zero-knowledge verification first. You will be redirected to the Provider page.');
+				redirectToProviderPortal();
+				return;
 			}
+
+			console.log('[purchase] attempting row', {
+				cid: row?.cid,
+				address: row?.ipfs_data?.address,
+				price: row?.ipfs_data?.price
+			});
+			// off-chain request at first
+			const endpoint = defaultProviderEndpoint;
+			const requestID = (crypto as any).randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+			const payload = {
+				requestID,
+				nonce: genNonce(16),
+				issuedAt: nowISO(),
+				consumerDID,
+				datasetID: row.cid,              
+				accessType: 'ONE_TIME_PURCHASE',
+				zkAccessLevelClaim: { level }
+			};
+			const proof = await signPurchasePayloadJWS(payload, consumerDID, consumerSeedB64);
+			const body = { ...payload, proof };
+
+			const providerResp = await sendPurchaseRequest(endpoint, body); // send POST to http://localhost:4002/purchase-request
+			await verifyProviderResponse(providerResp, requestID);
+			console.log('ProviderResponse verified:', providerResp);
+
+			// then purchase on-chain
+			const { signer } = await connectToMetaMask();
+			if (!signer) throw new Error('Please connect to MetaMask');
+
+			const merchandise = Merchandise__factory.connect(row.ipfs_data.address, signer);
+
+			// The price will be based on the provider's response and will revert to the original front-end price.
+			const finalPriceEth = (providerResp?.finalPrice ?? row.ipfs_data.price ?? '0.01').toString();
+
+			const tx = await merchandise.purchase({
+				value: ethers.parseEther(finalPriceEth)
+			});
+
+			alert('Purchase started. Please wait for the transaction confirmation...');
+			await tx.wait(1);
+			alert('Purchase completed!');
+			clearPendingPurchase();
 		} catch (error: any) {
-			alert(`Purchase error: ${error.message}`);
+			alert(`Purchase error: ${error?.message || error}`);
 			console.error('Purchase error:', error);
 		}
 	};
+
+	const maybeAutoPurchase = async () => {
+		if (autoPurchaseAttempted) return;
+		if ($providerVerification.status !== 'verified') return;
+		const level = Number($providerVerification.level ?? 0);
+		if (level < MIN_LEVEL) return;
+		const pending = getPendingPurchase();
+		const shouldResume = Boolean(pending) || isAutoPurchaseFlagSet();
+		if (!shouldResume) return;
+		if (!pending) {
+			clearAutoPurchaseFlag();
+			console.warn('[autoPurchase] Auto flag detected but pending payload missing');
+			return;
+		}
+		if (!pending.datasetCID) {
+			clearAutoPurchaseFlag();
+			console.warn('[autoPurchase] Missing datasetCID in pending data');
+			return;
+		}
+		if (!pending.ipfsData?.address) {
+			clearAutoPurchaseFlag();
+			console.warn('[autoPurchase] Missing contract address in pending data');
+			return;
+		}
+		autoPurchaseAttempted = true;
+		clearAutoPurchaseFlag();
+		alert('Detected a pending purchase. Resuming automatically...');
+		await purchase({
+			cid: pending.datasetCID,
+			ipfs_data: pending.ipfsData ?? {}
+		});
+	};
+
+	onMount(() => {
+		maybeAutoPurchase();
+	});
+
+	$: if ($providerVerification.status === 'verified') {
+		maybeAutoPurchase();
+	}
 
 	async function executeSearch() {
 		isSearching = true;
@@ -132,7 +241,7 @@
 </script>
 
 <div class="mt-8 flex flex-col items-center space-y-6">
-	<h2 class="text-2xl font-bold">IoT データ検索</h2>
+	<h2 class="text-2xl font-bold">IoT Data Functionality</h2>
 	
 	<!-- Debug info -->
 	<div class="text-xs text-gray-600">
@@ -156,23 +265,25 @@
 			</div>
 			
 			{#if filterByTime}
-				<div class="flex space-x-4 ml-6">
-					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">Start time</label>
-						<input
-							type="datetime-local"
-							bind:value={startTime}
-							class="px-3 py-2 border rounded text-black"
-						/>
-					</div>
-					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">End time</label>
-						<input
-							type="datetime-local"
-							bind:value={endTime}
-							class="px-3 py-2 border rounded text-black"
-						/>
-					</div>
+					<div class="flex space-x-4 ml-6">
+						<div class="flex flex-col">
+							<label class="text-sm font-medium text-black" for="startTimeInput">Start time</label>
+							<input
+								id="startTimeInput"
+								type="datetime-local"
+								bind:value={startTime}
+								class="px-3 py-2 border rounded text-black"
+							/>
+						</div>
+						<div class="flex flex-col">
+							<label class="text-sm font-medium text-black" for="endTimeInput">End time</label>
+							<input
+								id="endTimeInput"
+								type="datetime-local"
+								bind:value={endTime}
+								class="px-3 py-2 border rounded text-black"
+							/>
+						</div>
 				</div>
 			{/if}
 		</div>
@@ -192,8 +303,9 @@
 			{#if filterByLocation}
 				<div class="flex space-x-4 ml-6">
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">Latitude</label>
+						<label class="text-sm font-medium text-black" for="latitudeInput">Latitude</label>
 						<input
+							id="latitudeInput"
 							type="number"
 							step="0.000001"
 							bind:value={latitude}
@@ -202,8 +314,9 @@
 						/>
 					</div>
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">Longitude</label>
+						<label class="text-sm font-medium text-black" for="longitudeInput">Longitude</label>
 						<input
+							id="longitudeInput"
 							type="number"
 							step="0.000001"
 							bind:value={longitude}
@@ -212,8 +325,9 @@
 						/>
 					</div>
 					<div class="flex flex-col">
-						<label class="text-sm font-medium text-black">Radius (m)</label>
+						<label class="text-sm font-medium text-black" for="radiusInput">Radius (m)</label>
 						<input
+							id="radiusInput"
 							type="number"
 							step="1"
 							bind:value={radius}
@@ -289,6 +403,33 @@
 			</div>
 		{/if}
 	</div>
+
+	<!-- SSI access level status -->
+	<div class="border border-gray-200 rounded-lg p-4 bg-white shadow-sm space-y-2">
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-sm font-medium text-black">Zero-knowledge proof state</p>
+				{#if $providerVerification.status === 'verified'}
+					<p class="text-green-600 text-sm font-semibold">
+						{$providerVerification.providerDID} · { $providerVerification.level >= MIN_LEVEL ? 'FULL ACCESS' : 'LIMITED' }
+					</p>
+				{:else if $providerVerification.status === 'error'}
+					<p class="text-red-600 text-sm">{$providerVerification.error}</p>
+				{:else if $providerVerification.status === 'verifying'}
+					<p class="text-amber-600 text-sm">Verification in progress...</p>
+				{:else}
+					<p class="text-gray-600 text-sm">/provider page verification not yet complete!</p>
+				{/if}
+			</div>
+			<button
+				class="px-4 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+				on:click={redirectToProviderPortal}
+			>
+				Go to Provider page
+			</button>
+		</div>
+		<p class="text-xs text-gray-500">A purchase request can only be responded to if the level is FULL ACCESS (Level ≥ {MIN_LEVEL})</p>
+	</div>
 	
 	{#if queryResult && Array.isArray(queryResult)}
 		<table class="mt-4 bg-gray-100 p-2 rounded text-xs text-black">
@@ -342,7 +483,7 @@
 							{#if row.ipfs_data && row.ipfs_data.address && !row.ipfs_data.error}
 								<button 
 									class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
-									on:click={() => purchase(row.ipfs_data)}
+									on:click={() => purchase(row)}
 								>
 									Purchase
 								</button>
@@ -352,6 +493,10 @@
 							{:else}
 								<span class="text-gray-500 text-xs">Not purchasable</span>
 							{/if}
+						</td>
+						<td class="px-2 py-1 text-black">
+							<a class="link" href={`/merchandise/${row.ownerOrAddress}`}>detail</a>
+							<a class="link" href={`/merchandise/${row.id}`}>View by ID</a>
 						</td>
 					</tr>
 				{/each}

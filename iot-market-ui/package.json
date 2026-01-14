@@ -10,7 +10,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest",
 		"lint": "prettier --check .",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"restore:ipfs-records": "node ./scripts/restore-ipfs-records.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^3.0.0",
@@ -36,7 +37,13 @@
 		"@metamask/providers": "^16.0.0",
 		"@metamask/sdk": "^0.18.3",
 		"@metamask/utils": "^8.4.0",
+		"@types/ajv": "^0.0.5",
+		"ajv": "^8.17.1",
+		"ajv-formats": "^3.0.1",
+		"bs58": "^6.0.0",
 		"ethers": "^6.11.1",
-		"pg": "^8.16.3"
+		"jose": "^6.1.1",
+		"pg": "^8.16.3",
+		"uuid": "^13.0.0"
 	}
 }

@@ -1,0 +1,5 @@
+{
+  "name": "Blockchain IoT Marketplace Dev Container",
+  "description": "Placeholder manifest so Chrome DevTools stops requesting this path during development.",
+  "devtoolsFrontendUrl": "/"
+}

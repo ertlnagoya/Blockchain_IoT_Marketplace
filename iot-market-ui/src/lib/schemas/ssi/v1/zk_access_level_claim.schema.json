@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.example.com/ssi/v1/zk_access_level_claim.schema.json",
+  "title": "ZkAccessLevelClaim",
+  "type": "object",
+  "required": ["level"],
+  "properties": {
+    "level": { "type": "integer", "enum": [0, 1, 2] }
+  },
+  "additionalProperties": false
+}

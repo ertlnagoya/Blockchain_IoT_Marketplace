@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.example.com/response/v1/provider_response.schema.json",
+  "title": "ProviderResponse",
+  "type": "object",
+  "required": ["requestID", "providerDID", "issuedAt", "nonce", "finalPrice", "proof"],
+  "properties": {
+    "requestID": { "type": "string" },
+    "providerDID": { "type": "string" },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string" },
+    "finalPrice": { "type": "number" },
+    "datasetCommit": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "algo": { "type": "string" },
+        "value": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "policyCheckProof": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "vcID": { "type": "string" },
+        "trustLevel": { "type": "integer", "minimum": 0, "maximum": 2 }
+      },
+      "additionalProperties": true
+    },
+    "proof": {
+      "type": "object",
+      "required": ["type", "alg", "kid", "jws"],
+      "properties": {
+        "type": { "type": "string", "const": "JWS" },
+        "alg": { "type": "string", "const": "EdDSA" },
+        "kid": { "type": "string" },
+        "jws": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": true
+}
