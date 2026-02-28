@@ -51,6 +51,7 @@ sequenceDiagram
 
 - Docker  
 - VSCode (Extensions: Docker + DevContainers)
+- Docker Desktop is recommended (for `host.docker.internal` support).
 
 ## Setup
 
@@ -150,7 +151,32 @@ cargo run
 
 This will start the storage server. The server will listen on port 3000.
 
-### 6. Setup Mediator (owner)
+### 6. Setup IPFS / PostgreSQL (required for Mediator metadata)
+
+```bash
+cd ipfs
+docker compose up -d
+```
+
+Create the metadata table once:
+
+```bash
+docker exec -it postgres_db psql -U dev -d mydb
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS ipfs_records (
+    cid TEXT PRIMARY KEY,
+    start_timestamp TIMESTAMP NOT NULL,
+    end_timestamp TIMESTAMP NOT NULL,
+    location GEOGRAPHY(POINT, 4326) NOT NULL,
+    exist_people BOOL NOT NULL
+);
+```
+
+If the `ipfs_node` container keeps restarting with a message about `go-ipfs`, replace `ipfs/go-ipfs:latest` with `ipfs/kubo:latest` in `ipfs/docker-compose.yaml` and restart compose.
+
+### 7. Setup Mediator (owner)
 
 ```bash
 cd mediator-owner
@@ -163,25 +189,32 @@ The required Python libraries will be automatically installed via the `postCreat
 Then run:
 
 ```bash
-cargo run
+cargo run -- settings/owner_1.yaml
 ```
 
 This will start the Mediator process.  
 The owner is responsible for deploying merchandise and uploading files to the storage server.
+You can switch accounts/configurations by changing `settings/owner_1.yaml` to another `owner_*.yaml`.
 
-### 7. Setup Mediator (buyer)
+### 8. Setup Mediator (buyer)
 
 ```bash
 cd mediator-buyer
 code .
 ```
 
-Follow the same steps as in step 6 to set up the buyer mediator.
+Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.
 
-### 8. Make a Purchase
+Then run:
+
+```bash
+cargo run --bin mediator-b
+```
+
+### 9. Make a Purchase
 
 Place an mp4 file into `raw_data` in the Mediator(owner) directory to trigger recognition of a new video.  
-**Note:** File event notifications are unstable on Docker. If events are not detected, restart `cargo run` in Mediator(owner). You should see log output like `watcher's event.kind: ...` when successful.
+**Note:** File event notifications are unstable on Docker. If events are not detected, restart `cargo run -- settings/owner_1.yaml` in Mediator(owner). You should see log output like `watcher's event.kind: ...` when successful.
 
 Access `localhost:5173` and switch the MetaMask account to the one starting with UUID `0x3c`.  
 Then, purchase the product deployed by the Mediator(owner).  
