@@ -1,0 +1,45 @@
+site_name: Blockchain IoT Marketplace Docs
+site_description: Workshop and hands-on documentation for first learners
+site_url: http://localhost:8000
+repo_name: Blockchain_IoT_Marketplace
+repo_url: https://github.com/ertlnagoya/Blockchain_IoT_Marketplace
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Workshop:
+      - workshop/index.md
+      - 事前準備: workshop/prerequisites.md
+      - 最短起動: workshop/quickstart.md
+      - ワークショップ進行: workshop/facilitator-guide.md
+  - Hands-on:
+      - hands-on/index.md
+      - HUSKYLENS2サンプル: hands-on/huskylens2.md
+      - USBウェブカメラサンプル: hands-on/webcam.md
+      - スマホ閲覧アプリ: hands-on/mobile-viewer.md
+  - Operations:
+      - operations/index.md
+      - トラブルシュート: operations/troubleshooting.md
+      - FAQ: operations/faq.md
