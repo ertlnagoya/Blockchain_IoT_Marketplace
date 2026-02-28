@@ -1,0 +1,9 @@
+{
+  "event_type": "person_detected",
+  "data": {
+    "camera_id": "front_door",
+    "confidence": 0.93
+  },
+  "ts": "2026-02-28T10:00:20Z",
+  "source": "edge_inference"
+}

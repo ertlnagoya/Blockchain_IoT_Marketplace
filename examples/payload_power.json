@@ -1,0 +1,9 @@
+{
+  "entity_id": "sensor.main_power",
+  "state": "520",
+  "attributes": {
+    "unit_of_measurement": "W"
+  },
+  "ts": "2026-02-28T10:00:10Z",
+  "source": "home_assistant"
+}
