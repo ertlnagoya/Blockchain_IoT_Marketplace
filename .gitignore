@@ -26,3 +26,6 @@ ssi/circuits/*.wtns
 ssi/circuits/*.ptau
 ssi/circuits/*_000*.zkey
 ssi/circuits/*.r1cs
+
+# docs build output
+site/
