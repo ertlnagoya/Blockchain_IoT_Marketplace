@@ -1,0 +1,9 @@
+{
+  "entity_id": "sensor.living_room_temperature",
+  "state": "24.1",
+  "attributes": {
+    "unit_of_measurement": "C"
+  },
+  "ts": "2026-02-28T10:00:00Z",
+  "source": "home_assistant"
+}
