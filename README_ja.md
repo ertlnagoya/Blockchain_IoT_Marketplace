@@ -51,6 +51,7 @@ sequenceDiagram
 
 - Docker
 - VSCode (Extensions：Docker+DevContainers)
+- Docker Desktopを推奨（`host.docker.internal` を使うため）
 
 ## セットアップ
 
@@ -150,7 +151,32 @@ cargo run
 
 これによって、ストレージサーバーが起動します。ストレージサーバーはポート3000番で待ち受けます。
 
-### 6. Mediator(owner)のセットアップ
+### 6. IPFS / PostgreSQL のセットアップ（Mediatorのメタデータ保存に必須）
+
+```bash
+cd ipfs
+docker compose up -d
+```
+
+次に、メタデータ保存用テーブルを作成（初回のみ）:
+
+```bash
+docker exec -it postgres_db psql -U dev -d mydb
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS ipfs_records (
+    cid TEXT PRIMARY KEY,
+    start_timestamp TIMESTAMP NOT NULL,
+    end_timestamp TIMESTAMP NOT NULL,
+    location GEOGRAPHY(POINT, 4326) NOT NULL,
+    exist_people BOOL NOT NULL
+);
+```
+
+`ipfs_node` が `go-ipfs` のメッセージで再起動を繰り返す場合、`ipfs/docker-compose.yaml` の `ipfs/go-ipfs:latest` を `ipfs/kubo:latest` に変更して `docker compose up -d` をやり直してください。
+
+### 7. Mediator(owner)のセットアップ
 
 ```bash
 cd mediator-owner
@@ -163,25 +189,32 @@ VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選�
 続いて、以下のコマンドを実行
 
 ```bash
-cargo run
+cargo run -- settings/owner_1.yaml
 ```
 
 これによって、Mediatorが起動します。
 ownerは商品のデプロイとストレージサーバーへのファイルのアップロードを行います。
+`settings/owner_1.yaml` は必要に応じて `owner_*.yaml` に変更できます。
 
-### 7. Mediator(buyer)のセットアップ
+### 8. Mediator(buyer)のセットアップ
 
 ```bash
 cd mediator-buyer
 code .
 ```
 
-以降、手順6と同様にMediator(buyer)をセットアップしてください。
+VSCodeを開いたら、`> DevContainer: Rebuild and Reopen in Container`を選択してコンテナに入る。
 
-### 8. 購入手続きを行う
+続いて、以下のコマンドを実行
+
+```bash
+cargo run --bin mediator-b
+```
+
+### 9. 購入手続きを行う
 
 Mediator(owner)で`raw_data`にmp4ファイルを出し入れして、mediatorに新しい動画が来たと認識させてください。  
-（注意）ファイル更新のnotifyはDocker上では不安定であるため、ファイル更新のイベントが検出されない場合はMediator(owner)で`cargo run`し直してください（最初の数回は失敗する印象）。イベントが検出されたら、`cargo run`中で`watcher's event.kind: ...`と標準出力します（成功）。
+（注意）ファイル更新のnotifyはDocker上では不安定であるため、ファイル更新のイベントが検出されない場合はMediator(owner)で`cargo run -- settings/owner_1.yaml`し直してください（最初の数回は失敗する印象）。イベントが検出されたら、標準出力で`watcher's event.kind: ...`が表示されます（成功）。
 `localhost:5173`にアクセスし、metamaskでアカウントをbuyerのもの（UUIDが`0x3c`で始まるもの）に切り替えてください。  
 その後、mediator(owner)の実行によってデプロイされた商品を購入してください。  
 正しくセットアップされていれば、buyerはイベントをキャッチしてストレージサーバーから`downloads/`にファイルをダウンロードするはずです。
