@@ -1,4 +1,4 @@
-# Blockchain IoT Marketplace
+# IoTxWeb3 Intelligence Platform (IW3IP)
 
 ![Solidity](https://img.shields.io/badge/Solidity-%23363636.svg?style=for-the-badge&logo=solidity&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)

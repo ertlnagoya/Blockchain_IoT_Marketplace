@@ -1,4 +1,4 @@
-# Blockchain IoT Marketplace ドキュメント
+# IoTxWeb3 Intelligence Platform (IW3IP) ドキュメント
 
 このサイトは、ワークショップ運営と実習手順を分けて管理するためのドキュメントです。
 
