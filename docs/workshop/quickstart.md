@@ -1,17 +1,17 @@
 # 最短起動
 
-この章では、まず基盤を動かすことに集中します。
+この章は「まず全体を動かす」ための最短手順です。
 
 ## 起動順
 
-1. `iot-market`: ローカルチェーン + デプロイ
-2. `iot-market-ui`: フロントエンド
-3. `simple-storage`: ストレージサーバ
-4. `ipfs`: IPFS + PostgreSQL
+1. `iot-market`（ローカルチェーン + デプロイ）
+2. `iot-market-ui`（フロントエンド）
+3. `simple-storage`（データ保存）
+4. `ipfs`（IPFS + PostgreSQL）
 5. `mediator-owner`
 6. `mediator-buyer`
 
-## 例（抜粋）
+## 主要コマンド
 
 ```bash
 cd iot-market
@@ -30,4 +30,32 @@ cd iot-market-ui
 npm run dev
 ```
 
-詳しい注意点は、ルートの [README_ja.md](../../README_ja.md) を参照してください。
+```bash
+cd simple-storage
+cargo run
+```
+
+```bash
+cd ipfs
+docker compose up -d
+```
+
+```bash
+cd mediator-owner
+cargo run -- settings/owner_1.yaml
+```
+
+```bash
+cd mediator-buyer
+cargo run --bin mediator-b
+```
+
+## 成功判定
+
+- フロントが開く: `http://localhost:5173`
+- 商品一覧が取得できる
+- エラーで停止しているプロセスがない
+
+## メタマスク設定イメージ
+
+![MetaMask Network 設定例](../assets/how_to_network.png)

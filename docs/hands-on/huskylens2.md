@@ -1,21 +1,38 @@
 # HUSKYLENS2サンプル
 
-このサンプルは `sensor-bridge` を使います。
+## 目的
 
-## 入口
+HUSKYLENS2（または中継入力）からイベントを作り、商品化までを確認します。
+
+## 1. mockで最小確認
 
 ```bash
 cd sensor-bridge
-python3 huskylens_bridge.py --mode mock --output-dir ../mediator-owner/raw_data/output
+python3 huskylens_bridge.py \
+  --mode mock \
+  --camera-id 301 \
+  --output-dir ../mediator-owner/raw_data/output \
+  --flush-interval-sec 8
 ```
 
-## 実機（serial）
+## 2. 実機（serial）
 
 ```bash
-python3 huskylens_bridge.py --mode serial --serial-port /dev/ttyUSB0 --output-dir ../mediator-owner/raw_data/output
+python3 huskylens_bridge.py \
+  --mode serial \
+  --serial-port /dev/ttyUSB0 \
+  --baudrate 115200 \
+  --camera-id 301 \
+  --output-dir ../mediator-owner/raw_data/output
 ```
 
-## 期待結果
+## 3. 確認ポイント
 
-- `mediator-owner/raw_data/output` に `*.txt` 生成
-- Frontendに商品が表示
+- `raw_data/output` に `301_huskylens_*.txt` が作成される
+- `mediator-owner` ログに watcher event が出る
+- フロントに商品が反映される
+
+## 4. トラブル時
+
+- `pyserial` 未導入: `pip install pyserial`
+- ポート不明: `/dev/tty.usbserial-*` などを確認

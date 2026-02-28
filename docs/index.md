@@ -1,14 +1,19 @@
 # Blockchain IoT Marketplace ドキュメント
 
-このドキュメントは、ワークショップ・ハンズオン・運用時の参照を1か所にまとめるためのポータルです。
+このサイトは、ワークショップ運営と実習手順を分けて管理するためのドキュメントです。
 
-## 対象読者
+## ドキュメントの考え方
 
-- 初めてこのデータ共有基盤を触る方
-- ワークショップ講師・TA
-- サンプルを派生実装したい開発者
+- **Workshop**: 講師・TA向けの進行設計（目的、時間配分、運営）
+- **Hands-on**: 受講者向けの実作業手順（コマンド、期待結果、確認ポイント）
 
-## まず読む順番
+つまり、**Workshop の一部として Hands-on を実施する**構成です。
+
+## 全体フロー
+
+![全体イメージ](assets/raspberryPi.jpg)
+
+## はじめに読むページ
 
 1. [Workshop / 事前準備](workshop/prerequisites.md)
 2. [Workshop / 最短起動](workshop/quickstart.md)
@@ -22,4 +27,4 @@ pip install mkdocs-material
 mkdocs serve
 ```
 
-起動後: `http://127.0.0.1:8000`
+- URL: `http://127.0.0.1:8000`
