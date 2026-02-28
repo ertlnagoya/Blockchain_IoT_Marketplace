@@ -1,4 +1,4 @@
-# Blockchain IoT Marketplace Documentation
+# IoTxWeb3 Intelligence Platform (IW3IP) Documentation
 
 This site organizes material for workshop facilitation and learner hands-on execution.
 

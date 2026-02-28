@@ -1,7 +1,7 @@
-site_name: Blockchain IoT Marketplace Docs
-site_description: Workshop and hands-on documentation for first learners
+site_name: IoTxWeb3 Intelligence Platform (IW3IP) Docs
+site_description: Workshop and hands-on documentation for IoTxWeb3 Intelligence Platform (IW3IP)
 site_url: https://<YOUR_GITHUB_USERNAME>.github.io/<YOUR_REPOSITORY_NAME>/
-repo_name: Blockchain_IoT_Marketplace
+repo_name: IoTxWeb3 Intelligence Platform (IW3IP)
 repo_url: https://github.com/ertlnagoya/Blockchain_IoT_Marketplace
 exclude_docs: README.md
 

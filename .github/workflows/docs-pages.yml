@@ -1,4 +1,4 @@
-name: docs-pages
+name: iw3ip-docs-pages
 
 on:
   push:
