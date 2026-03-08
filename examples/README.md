@@ -1,5 +1,24 @@
 # Examples
 
+## Hands-on sample programs
+
+- `examples/hands_on/README.md`
+  - overview of all exercise programs
+- `examples/hands_on/phase2_environment_disaster/problem_program.py`
+  - exercise version with `TODO`
+- `examples/hands_on/phase2_environment_disaster/answer_program.py`
+  - reference solution
+- `examples/hands_on/phase2_environment_disaster/README.md`
+  - step-by-step instructions for the exercise
+
+Other hands-on exercise directories:
+
+- `examples/hands_on/huskylens2_mock/`
+- `examples/hands_on/webcam_littering_mock/`
+- `examples/hands_on/mobile_viewer/`
+- `examples/hands_on/phase1_ha_ssi_publisher/`
+- `examples/hands_on/phase2_webcam_event_sharing/`
+
 ## Consent VC registration
 
 ```bash
