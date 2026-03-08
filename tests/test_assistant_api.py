@@ -45,3 +45,16 @@ def test_assistant_plan_returns_planner_diagnostics() -> None:
     assert isinstance(body["planner_diagnostics"]["user_message"], str)
     assert "summary" in body["planner_diagnostics"]
     assert "suggestion" in body["planner_diagnostics"]
+
+
+def test_assistant_plan_allows_local_frontend_origin() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/assistant/plan",
+        json={"request_text": "公園北側でポイ捨てを監視して通知して。"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

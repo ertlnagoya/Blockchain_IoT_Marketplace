@@ -69,6 +69,15 @@ services:
     ports:
       - "18000:18000"
 
+  assistant-ui:
+    build:
+      context: ..
+      dockerfile: assistant-ui/Dockerfile
+    container_name: iw3ip-assistant-ui
+    profiles: ["assistant-ui"]
+    ports:
+      - "4173:4173"
+
   nodered:
     image: nodered/node-red:latest
     container_name: iw3ip-nodered

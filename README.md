@@ -223,6 +223,8 @@ Main sample files:
 - `examples/phase3_request_park_safety.json`
 - `examples/phase3_events_park_safety.json`
 - `assistant/app/main.py`
+- `assistant-ui/src/App.tsx`
+- `assistant-ui/src/styles.css`
 - `assistant/app/planner.py`
 - `assistant/app/planner_interface.py`
 - `assistant/app/planner_factory.py`
@@ -297,6 +299,43 @@ curl -X POST http://localhost:8090/assistant/execute \
   -H 'Content-Type: application/json' \
   -d @examples/phase3_request_park_safety.json
 ```
+
+### Phase 3 minimal frontend demo
+
+This branch also includes a small React screen for the Phase 3 assistant.
+
+What it does:
+
+- edits the natural-language request
+- calls `POST /assistant/plan`
+- calls `POST /assistant/execute`
+- calls `GET /assistant/executions`
+- renders `planner_diagnostics` as a badge and alert panel
+
+Local run:
+
+```bash
+cd assistant-ui
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Then open:
+
+- [http://localhost:5173](http://localhost:5173)
+
+Docker Compose run:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant up --build -d assistant
+docker compose -f infra/docker-compose.yml --profile assistant-ui up --build -d assistant-ui
+```
+
+Then open:
+
+- [http://localhost:4173](http://localhost:4173)
+
+The screen defaults to `http://localhost:8090` as the assistant API base URL.
 
 ### Phase 3 planner modes
 

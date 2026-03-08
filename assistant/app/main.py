@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from assistant.app.actuator import ActionActuator
 from assistant.app.config import Settings
@@ -30,6 +31,13 @@ actuator = ActionActuator()
 store = ExecutionStore()
 
 app = FastAPI(title="IW3IP Regional Safety Assistant", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 def _load_sample_events() -> list[EventRecord]:

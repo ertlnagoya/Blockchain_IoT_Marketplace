@@ -223,6 +223,8 @@ docker compose -f infra/docker-compose.yml down
 - `examples/phase3_request_park_safety.json`
 - `examples/phase3_events_park_safety.json`
 - `assistant/app/main.py`
+- `assistant-ui/src/App.tsx`
+- `assistant-ui/src/styles.css`
 - `assistant/app/planner.py`
 - `assistant/app/planner_interface.py`
 - `assistant/app/planner_factory.py`
@@ -297,6 +299,43 @@ curl -X POST http://localhost:8090/assistant/execute \
   -H 'Content-Type: application/json' \
   -d @examples/phase3_request_park_safety.json
 ```
+
+### Phase 3 の最小フロントエンドデモ
+
+このブランチには、Phase 3 assistant 用の小さな React 画面も含まれます。
+
+できること:
+
+- 自然言語の要求文を編集
+- `POST /assistant/plan` を実行
+- `POST /assistant/execute` を実行
+- `GET /assistant/executions` を確認
+- `planner_diagnostics` を badge と alert panel で表示
+
+ローカル実行:
+
+```bash
+cd assistant-ui
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+その後に開く URL:
+
+- [http://localhost:5173](http://localhost:5173)
+
+Docker Compose 実行:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant up --build -d assistant
+docker compose -f infra/docker-compose.yml --profile assistant-ui up --build -d assistant-ui
+```
+
+その後に開く URL:
+
+- [http://localhost:4173](http://localhost:4173)
+
+画面上の assistant API base URL の既定値は `http://localhost:8090` です。
 
 ### Phase 3 planner モード
 
