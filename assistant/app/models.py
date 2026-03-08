@@ -40,6 +40,9 @@ class PlannerDiagnostics(BaseModel):
     severity: Literal["info", "warning", "error"] = "info"
     label: str = "OK"
     color_hint: Literal["green", "amber", "red"] = "green"
+    code: str = "plan_generated"
+    category: Literal["planner", "provider", "validation", "success"] = "success"
+    user_message: str = "Plan generated successfully."
     planner_mode: str
     planner_name: str
     provider_name: str

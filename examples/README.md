@@ -56,7 +56,7 @@ curl -X POST http://localhost:8090/assistant/plan \
 Expected:
 
 ```json
-{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"},"planner_diagnostics":{"status":"ok","severity":"info","label":"OK","color_hint":"green","planner_mode":"llm","provider_name":"stub","used_fallback":false}}
+{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"},"planner_diagnostics":{"status":"ok","severity":"info","label":"OK","color_hint":"green","code":"llm_plan_generated","category":"success","user_message":"LLM planner generated a plan successfully.","planner_mode":"llm","provider_name":"stub","used_fallback":false}}
 ```
 
 ### Phase 3 with an actual OpenAI-compatible API
@@ -139,7 +139,7 @@ curl -X POST http://localhost:8090/assistant/plan \
 Expected:
 
 ```json
-{"status":"planned","planner_diagnostics":{"provider_name":"openai_compatible","status":"ok","severity":"info","label":"OK","color_hint":"green","used_fallback":false}}
+{"status":"planned","planner_diagnostics":{"provider_name":"openai_compatible","status":"ok","severity":"info","label":"OK","color_hint":"green","code":"llm_plan_generated","category":"success","user_message":"LLM planner generated a plan successfully.","used_fallback":false}}
 ```
 
 ## Consent VC registration

@@ -40,5 +40,8 @@ def test_assistant_plan_returns_planner_diagnostics() -> None:
     assert body["planner_diagnostics"]["severity"] in {"info", "warning", "error"}
     assert body["planner_diagnostics"]["label"] in {"OK", "Fallback", "Ready"}
     assert body["planner_diagnostics"]["color_hint"] in {"green", "amber", "red"}
+    assert body["planner_diagnostics"]["category"] in {"planner", "provider", "validation", "success"}
+    assert isinstance(body["planner_diagnostics"]["code"], str)
+    assert isinstance(body["planner_diagnostics"]["user_message"], str)
     assert "summary" in body["planner_diagnostics"]
     assert "suggestion" in body["planner_diagnostics"]

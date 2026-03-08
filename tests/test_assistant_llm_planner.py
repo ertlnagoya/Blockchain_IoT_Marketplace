@@ -21,6 +21,9 @@ def test_llm_planner_falls_back_when_backend_is_unsupported() -> None:
     assert diagnostics.severity == "warning"
     assert diagnostics.label == "Fallback"
     assert diagnostics.color_hint == "amber"
+    assert diagnostics.code == "planner_runtime_error"
+    assert diagnostics.category == "planner"
+    assert "rule-based planner was used instead" in diagnostics.user_message
     assert diagnostics.error_type == "ValueError"
     assert diagnostics.error_message == "broken"
 

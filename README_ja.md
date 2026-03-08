@@ -257,6 +257,9 @@ curl -X POST http://localhost:8090/assistant/plan \
     "severity": "warning",
     "label": "Fallback",
     "color_hint": "amber",
+    "code": "llm_provider_error",
+    "category": "provider",
+    "user_message": "The LLM API could not be used, so the rule-based planner was used instead.",
     "planner_mode": "llm",
     "provider_name": "openai_compatible",
     "used_fallback": true,
@@ -276,6 +279,12 @@ curl -X POST http://localhost:8090/assistant/plan \
   - `OK` や `Fallback` のような短いバッジ表示用文字列
 - `color_hint`
   - `green`, `amber`, `red` のような色分け用ヒント
+- `code`
+  - `llm_provider_error` のような機械判定しやすい固定コード
+- `category`
+  - `success`, `provider`, `validation`, `planner` のような大分類
+- `user_message`
+  - フロントにそのまま表示しやすい短い説明文
 - `summary`
   - 人間向けの短い説明
 - `suggestion`

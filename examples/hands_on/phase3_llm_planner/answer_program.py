@@ -34,6 +34,9 @@ def summarize_plan(response: dict) -> dict:
         "planner_diagnostics": {
             "label": diagnostics["label"],
             "color_hint": diagnostics["color_hint"],
+            "code": diagnostics["code"],
+            "category": diagnostics["category"],
+            "user_message": diagnostics["user_message"],
         },
     }
 

@@ -49,7 +49,10 @@ Expected:
   "watch_events": ["possible_littering", "suspicious_activity"],
   "planner_diagnostics": {
     "label": "OK",
-    "color_hint": "green"
+    "color_hint": "green",
+    "code": "llm_plan_generated",
+    "category": "success",
+    "user_message": "LLM planner generated a plan successfully."
   }
 }
 ```
@@ -70,7 +73,10 @@ Expected:
   "watch_events": ["suspicious_activity"],
   "planner_diagnostics": {
     "label": "OK",
-    "color_hint": "green"
+    "color_hint": "green",
+    "code": "llm_plan_generated",
+    "category": "success",
+    "user_message": "LLM planner generated a plan successfully."
   }
 }
 ```
@@ -129,7 +135,10 @@ Expected:
   "target_area": "park-north",
   "planner_diagnostics": {
     "label": "OK",
-    "color_hint": "green"
+    "color_hint": "green",
+    "code": "llm_plan_generated",
+    "category": "success",
+    "user_message": "LLM planner generated a plan successfully."
   }
 }
 ```
@@ -159,6 +168,6 @@ pytest -q tests/test_phase3_llm_hands_on_program.py
   - check `ASSISTANT_LLM_MODEL`
 - plan is returned but `planner_name` is not the LLM planner:
   - fallback may have happened
-  - check `planner_diagnostics.label`, `planner_diagnostics.color_hint`, and whether the model returned valid JSON
+  - check `planner_diagnostics.code`, `planner_diagnostics.category`, `planner_diagnostics.label`, `planner_diagnostics.color_hint`, and whether the model returned valid JSON
 - `station-front` is not returned:
   - make sure you are on branch `codex/llm-planner-minimal`

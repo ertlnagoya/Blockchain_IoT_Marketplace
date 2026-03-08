@@ -33,11 +33,33 @@ class LLMPlanner:
             severity="info",
             label="Ready",
             color_hint="green",
+            code="planner_ready",
+            category="planner",
+            user_message="LLM planner is ready to accept a request.",
             planner_mode="llm",
             planner_name=self.planner_name,
             provider_name=self.provider.provider_name,
             summary="LLM planner is ready.",
             suggestion="Call /assistant/plan with a request to generate a structured plan.",
+        )
+
+    def _fallback_details(self, exc: Exception) -> tuple[str, str, str]:
+        if isinstance(exc, LLMProviderError):
+            return (
+                "llm_provider_error",
+                "provider",
+                "The LLM API could not be used, so the rule-based planner was used instead.",
+            )
+        if isinstance(exc, (ValidationError, PlanValidationError)):
+            return (
+                "llm_output_invalid",
+                "validation",
+                "The LLM returned a plan in an unsupported format, so the rule-based planner was used instead.",
+            )
+        return (
+            "planner_runtime_error",
+            "planner",
+            "The planner hit an internal error, so the rule-based planner was used instead.",
         )
 
     def plan(self, request_text: str) -> ExecutionPlan:
@@ -48,6 +70,9 @@ class LLMPlanner:
                 severity="info",
                 label="OK",
                 color_hint="green",
+                code="llm_plan_generated",
+                category="success",
+                user_message="LLM planner generated a plan successfully.",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,
@@ -68,11 +93,15 @@ class LLMPlanner:
             )
             return validate_plan(plan)
         except (ValidationError, PlanValidationError, LLMProviderError, ValueError) as exc:
+            code, category, user_message = self._fallback_details(exc)
             self._last_diagnostics = PlannerDiagnostics(
                 status="fallback",
                 severity="warning",
                 label="Fallback",
                 color_hint="amber",
+                code=code,
+                category=category,
+                user_message=user_message,
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,

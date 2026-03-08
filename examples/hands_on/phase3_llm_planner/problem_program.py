@@ -38,6 +38,9 @@ def summarize_plan(response: dict) -> dict:
     # - planner_diagnostics:
     #   - label
     #   - color_hint
+    #   - code
+    #   - category
+    #   - user_message
     raise NotImplementedError("TODO: implement summarize_plan()")
 
 

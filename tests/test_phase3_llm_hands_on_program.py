@@ -35,6 +35,9 @@ def test_summarize_plan_shape() -> None:
             "planner_diagnostics": {
                 "label": "OK",
                 "color_hint": "green",
+                "code": "llm_plan_generated",
+                "category": "success",
+                "user_message": "LLM planner generated a plan successfully.",
             },
         }
     )
@@ -47,5 +50,8 @@ def test_summarize_plan_shape() -> None:
         "planner_diagnostics": {
             "label": "OK",
             "color_hint": "green",
+            "code": "llm_plan_generated",
+            "category": "success",
+            "user_message": "LLM planner generated a plan successfully.",
         },
     }

@@ -257,6 +257,9 @@ The response now also includes `planner_diagnostics`, for example:
     "severity": "warning",
     "label": "Fallback",
     "color_hint": "amber",
+    "code": "llm_provider_error",
+    "category": "provider",
+    "user_message": "The LLM API could not be used, so the rule-based planner was used instead.",
     "planner_mode": "llm",
     "provider_name": "openai_compatible",
     "used_fallback": true,
@@ -276,6 +279,12 @@ Readable fields:
   - short badge text such as `OK` or `Fallback`
 - `color_hint`
   - suggested badge color such as `green`, `amber`, or `red`
+- `code`
+  - stable machine-readable identifier such as `llm_provider_error`
+- `category`
+  - broad bucket such as `success`, `provider`, `validation`, or `planner`
+- `user_message`
+  - short end-user text that can be shown directly in the frontend
 - `summary`
   - short human-readable explanation
 - `suggestion`
