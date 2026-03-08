@@ -46,7 +46,11 @@ Expected:
 {
   "planner_name": "llm-planner-stub-v1",
   "target_area": "park-north",
-  "watch_events": ["possible_littering", "suspicious_activity"]
+  "watch_events": ["possible_littering", "suspicious_activity"],
+  "planner_diagnostics": {
+    "label": "OK",
+    "color_hint": "green"
+  }
 }
 ```
 
@@ -63,7 +67,11 @@ Expected:
 {
   "planner_name": "llm-planner-stub-v1",
   "target_area": "station-front",
-  "watch_events": ["suspicious_activity"]
+  "watch_events": ["suspicious_activity"],
+  "planner_diagnostics": {
+    "label": "OK",
+    "color_hint": "green"
+  }
 }
 ```
 
@@ -118,7 +126,11 @@ Expected:
 ```json
 {
   "planner_name": "llm-planner-mock-http-v1",
-  "target_area": "park-north"
+  "target_area": "park-north",
+  "planner_diagnostics": {
+    "label": "OK",
+    "color_hint": "green"
+  }
 }
 ```
 
@@ -147,6 +159,6 @@ pytest -q tests/test_phase3_llm_hands_on_program.py
   - check `ASSISTANT_LLM_MODEL`
 - plan is returned but `planner_name` is not the LLM planner:
   - fallback may have happened
-  - check whether the model returned valid JSON
+  - check `planner_diagnostics.label`, `planner_diagnostics.color_hint`, and whether the model returned valid JSON
 - `station-front` is not returned:
   - make sure you are on branch `codex/llm-planner-minimal`

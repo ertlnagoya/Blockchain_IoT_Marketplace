@@ -10,6 +10,8 @@ class RuleBasedPlanner:
         self._last_diagnostics = PlannerDiagnostics(
             status="ok",
             severity="info",
+            label="OK",
+            color_hint="green",
             planner_mode="rule_based",
             planner_name=self.planner_name,
             provider_name="rule_based",
@@ -21,6 +23,8 @@ class RuleBasedPlanner:
         self._last_diagnostics = PlannerDiagnostics(
             status="ok",
             severity="info",
+            label="OK",
+            color_hint="green",
             planner_mode="rule_based",
             planner_name=self.planner_name,
             provider_name="rule_based",

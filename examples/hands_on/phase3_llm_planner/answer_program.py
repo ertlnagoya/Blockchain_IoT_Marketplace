@@ -25,11 +25,16 @@ def build_plan_request(request_body: dict) -> dict:
 
 def summarize_plan(response: dict) -> dict:
     plan = response["plan"]
+    diagnostics = response["planner_diagnostics"]
     return {
         "planner_name": plan["planner_name"],
         "target_area": plan["target_area"],
         "watch_events": plan["watch_events"],
         "actions": [action["action_type"] for action in plan["actions"]],
+        "planner_diagnostics": {
+            "label": diagnostics["label"],
+            "color_hint": diagnostics["color_hint"],
+        },
     }
 
 

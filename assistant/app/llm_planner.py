@@ -31,6 +31,8 @@ class LLMPlanner:
         self._last_diagnostics = PlannerDiagnostics(
             status="ok",
             severity="info",
+            label="Ready",
+            color_hint="green",
             planner_mode="llm",
             planner_name=self.planner_name,
             provider_name=self.provider.provider_name,
@@ -44,6 +46,8 @@ class LLMPlanner:
             self._last_diagnostics = PlannerDiagnostics(
                 status="ok",
                 severity="info",
+                label="OK",
+                color_hint="green",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,
@@ -67,6 +71,8 @@ class LLMPlanner:
             self._last_diagnostics = PlannerDiagnostics(
                 status="fallback",
                 severity="warning",
+                label="Fallback",
+                color_hint="amber",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,

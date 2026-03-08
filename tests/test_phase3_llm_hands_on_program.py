@@ -31,7 +31,11 @@ def test_summarize_plan_shape() -> None:
                     {"action_type": "send_notification"},
                     {"action_type": "show_warning"},
                 ],
-            }
+            },
+            "planner_diagnostics": {
+                "label": "OK",
+                "color_hint": "green",
+            },
         }
     )
 
@@ -40,4 +44,8 @@ def test_summarize_plan_shape() -> None:
         "target_area": "station-front",
         "watch_events": ["suspicious_activity"],
         "actions": ["send_notification", "show_warning"],
+        "planner_diagnostics": {
+            "label": "OK",
+            "color_hint": "green",
+        },
     }

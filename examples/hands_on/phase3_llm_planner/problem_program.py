@@ -35,6 +35,9 @@ def summarize_plan(response: dict) -> dict:
     # - target_area
     # - watch_events
     # - actions (list of action_type)
+    # - planner_diagnostics:
+    #   - label
+    #   - color_hint
     raise NotImplementedError("TODO: implement summarize_plan()")
 
 

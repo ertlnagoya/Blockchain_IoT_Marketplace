@@ -253,6 +253,10 @@ The response now also includes `planner_diagnostics`, for example:
 ```json
 {
   "planner_diagnostics": {
+    "status": "fallback",
+    "severity": "warning",
+    "label": "Fallback",
+    "color_hint": "amber",
     "planner_mode": "llm",
     "provider_name": "openai_compatible",
     "used_fallback": true,
@@ -268,6 +272,10 @@ Readable fields:
   - `ok` or `fallback`
 - `severity`
   - `info`, `warning`, or `error`
+- `label`
+  - short badge text such as `OK` or `Fallback`
+- `color_hint`
+  - suggested badge color such as `green`, `amber`, or `red`
 - `summary`
   - short human-readable explanation
 - `suggestion`

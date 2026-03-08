@@ -38,6 +38,8 @@ class ExecutionPlan(BaseModel):
 class PlannerDiagnostics(BaseModel):
     status: Literal["ok", "fallback"] = "ok"
     severity: Literal["info", "warning", "error"] = "info"
+    label: str = "OK"
+    color_hint: Literal["green", "amber", "red"] = "green"
     planner_mode: str
     planner_name: str
     provider_name: str

@@ -253,6 +253,10 @@ curl -X POST http://localhost:8090/assistant/plan \
 ```json
 {
   "planner_diagnostics": {
+    "status": "fallback",
+    "severity": "warning",
+    "label": "Fallback",
+    "color_hint": "amber",
     "planner_mode": "llm",
     "provider_name": "openai_compatible",
     "used_fallback": true,
@@ -268,6 +272,10 @@ curl -X POST http://localhost:8090/assistant/plan \
   - `ok` または `fallback`
 - `severity`
   - `info`, `warning`, `error`
+- `label`
+  - `OK` や `Fallback` のような短いバッジ表示用文字列
+- `color_hint`
+  - `green`, `amber`, `red` のような色分け用ヒント
 - `summary`
   - 人間向けの短い説明
 - `suggestion`
