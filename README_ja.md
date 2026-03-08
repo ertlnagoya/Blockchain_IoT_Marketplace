@@ -215,6 +215,16 @@ docker compose -f infra/docker-compose.yml down
 - USBウェブカメライベント共有
 を参照してください。
 
+問題用プログラムと解答用プログラムを使うワークショップ形式にしたい場合は、次を参照してください。
+
+- `examples/hands_on/README.md`
+- `examples/hands_on/huskylens2_mock/`
+- `examples/hands_on/webcam_littering_mock/`
+- `examples/hands_on/mobile_viewer/`
+- `examples/hands_on/phase1_ha_ssi_publisher/`
+- `examples/hands_on/phase2_environment_disaster/`
+- `examples/hands_on/phase2_webcam_event_sharing/`
+
 ## ディレクトリ構成
 
 - `publisher/` : FastAPI ベース Data Publisher
