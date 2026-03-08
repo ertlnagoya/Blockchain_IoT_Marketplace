@@ -248,6 +248,20 @@ curl -X POST http://localhost:8090/assistant/plan \
   -d @examples/phase3_request_park_safety.json
 ```
 
+The response now also includes `planner_diagnostics`, for example:
+
+```json
+{
+  "planner_diagnostics": {
+    "planner_mode": "llm",
+    "provider_name": "openai_compatible",
+    "used_fallback": true,
+    "error_type": "LLMProviderError",
+    "error_message": "model response is not valid JSON"
+  }
+}
+```
+
 Example execute request:
 
 ```bash
@@ -336,6 +350,14 @@ To run the same test against the exercise file after implementing the TODOs:
 PHASE3_LLM_HANDS_ON_MODULE=examples.hands_on.phase3_llm_planner.problem_program \
 pytest -q tests/test_phase3_llm_hands_on_program.py
 ```
+
+If you are debugging a real LLM API issue, check:
+
+```bash
+curl http://localhost:8090/assistant/executions
+```
+
+Look for `planner_diagnostics.error_type`, `planner_diagnostics.error_message`, and `planner_diagnostics.used_fallback`.
 
 ## Phase 2 Example Files
 

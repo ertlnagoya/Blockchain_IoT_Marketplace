@@ -1,14 +1,24 @@
 from __future__ import annotations
 
-from assistant.app.models import ActionCommand, ExecutionPlan
+from assistant.app.models import ActionCommand, ExecutionPlan, PlannerDiagnostics
 from assistant.app.plan_validator import validate_plan
 
 
 class RuleBasedPlanner:
     def __init__(self, planner_name: str) -> None:
         self.planner_name = planner_name
+        self._last_diagnostics = PlannerDiagnostics(
+            planner_mode="rule_based",
+            planner_name=self.planner_name,
+            provider_name="rule_based",
+        )
 
     def plan(self, request_text: str) -> ExecutionPlan:
+        self._last_diagnostics = PlannerDiagnostics(
+            planner_mode="rule_based",
+            planner_name=self.planner_name,
+            provider_name="rule_based",
+        )
         text = request_text.lower()
 
         if "公園北側" in request_text or "park north" in text or "north side of the park" in text:
@@ -82,3 +92,6 @@ class RuleBasedPlanner:
                 original_request=request_text,
             )
         )
+
+    def get_last_diagnostics(self) -> PlannerDiagnostics:
+        return self._last_diagnostics

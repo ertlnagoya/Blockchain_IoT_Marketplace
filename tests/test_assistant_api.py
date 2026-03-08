@@ -18,3 +18,21 @@ def test_assistant_execute_runs_actions() -> None:
     assert body["status"] == "executed"
     assert body["execution"]["evaluation"]["triggered"] is True
     assert len(body["execution"]["actions_executed"]) >= 1
+    assert body["execution"]["planner_diagnostics"]["used_fallback"] is False
+
+
+def test_assistant_plan_returns_planner_diagnostics() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/assistant/plan",
+        json={
+            "request_text": "公園北側でポイ捨てが増えていたら教えて。必要なら照明をつけて管理者に通知して。"
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "planned"
+    assert "planner_diagnostics" in body
+    assert body["planner_diagnostics"]["planner_mode"] in {"rule_based", "llm"}

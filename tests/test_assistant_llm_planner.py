@@ -12,9 +12,13 @@ def test_llm_planner_falls_back_when_backend_is_unsupported() -> None:
     planner.provider = broken_provider
 
     plan = planner.plan("公園北側でポイ捨てが増えていたら照明をつけて通知して。")
+    diagnostics = planner.get_last_diagnostics()
 
     assert plan.planner_name == "rule-based-fallback-v1"
     assert plan.target_area == "park-north"
+    assert diagnostics.used_fallback is True
+    assert diagnostics.error_type == "ValueError"
+    assert diagnostics.error_message == "broken"
 
 
 def test_validator_rejects_unsupported_event() -> None:

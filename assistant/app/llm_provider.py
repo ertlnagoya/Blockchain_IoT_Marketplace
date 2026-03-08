@@ -11,11 +11,15 @@ class LLMProviderError(RuntimeError):
 
 
 class LLMProvider(Protocol):
+    provider_name: str
+
     def generate_json(self, system_prompt: str, user_prompt: str) -> dict:
         ...
 
 
 class StubLLMProvider:
+    provider_name = "stub"
+
     def generate_json(self, system_prompt: str, user_prompt: str) -> dict:
         request_text = user_prompt.lower()
         if "公園北側" in user_prompt or "park north" in request_text or "north side of the park" in request_text:
@@ -96,6 +100,7 @@ class OpenAICompatibleLLMProvider:
         timeout_seconds: float = 20.0,
         http_client: httpx.Client | None = None,
     ) -> None:
+        self.provider_name = "openai_compatible"
         self.api_base_url = api_base_url.rstrip("/")
         self.api_key = api_key
         self.model = model

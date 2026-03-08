@@ -52,7 +52,7 @@ curl -X POST http://localhost:8090/assistant/plan \
 Expected:
 
 ```json
-{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"}}
+{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"},"planner_diagnostics":{"planner_mode":"llm","provider_name":"stub","used_fallback":false}}
 ```
 
 ### Phase 3 with an actual OpenAI-compatible API
@@ -91,6 +91,7 @@ Common trouble points:
   - the base URL does not point to an OpenAI-compatible `/chat/completions` endpoint
 - fallback keeps happening
   - the model may be returning non-JSON content
+  - check `/assistant/executions` and inspect `planner_diagnostics.error_message`
 
 Then call:
 

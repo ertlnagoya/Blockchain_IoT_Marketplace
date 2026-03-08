@@ -46,7 +46,12 @@ def health() -> dict[str, str]:
 @app.post("/assistant/plan")
 def create_plan(req: PlanRequest) -> dict:
     plan = planner.plan(req.request_text)
-    return {"status": "planned", "plan": plan.model_dump(mode="json")}
+    diagnostics = planner.get_last_diagnostics()
+    return {
+        "status": "planned",
+        "plan": plan.model_dump(mode="json"),
+        "planner_diagnostics": diagnostics.model_dump(mode="json"),
+    }
 
 
 @app.post("/assistant/execute")
@@ -62,6 +67,7 @@ def execute(req: ExecuteRequest) -> dict:
         created_at=datetime.now(UTC),
         request_text=req.request_text,
         plan=plan,
+        planner_diagnostics=planner.get_last_diagnostics(),
         observed_events=events,
         evaluation=evaluation,
         actions_executed=actions_executed,

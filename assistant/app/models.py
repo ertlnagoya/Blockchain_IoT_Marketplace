@@ -35,6 +35,15 @@ class ExecutionPlan(BaseModel):
     original_request: str
 
 
+class PlannerDiagnostics(BaseModel):
+    planner_mode: str
+    planner_name: str
+    provider_name: str
+    used_fallback: bool = False
+    error_type: str | None = None
+    error_message: str | None = None
+
+
 class ExecuteRequest(BaseModel):
     request_text: str
     observed_events: list[EventRecord] | None = None
@@ -51,6 +60,7 @@ class ExecutionRecord(BaseModel):
     created_at: datetime
     request_text: str
     plan: ExecutionPlan
+    planner_diagnostics: PlannerDiagnostics
     observed_events: list[EventRecord]
     evaluation: EvaluationResult
     actions_executed: list[ActionCommand]

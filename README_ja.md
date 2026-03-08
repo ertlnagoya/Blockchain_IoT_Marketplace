@@ -248,6 +248,20 @@ curl -X POST http://localhost:8090/assistant/plan \
   -d @examples/phase3_request_park_safety.json
 ```
 
+このレスポンスには `planner_diagnostics` も含まれます。例:
+
+```json
+{
+  "planner_diagnostics": {
+    "planner_mode": "llm",
+    "provider_name": "openai_compatible",
+    "used_fallback": true,
+    "error_type": "LLMProviderError",
+    "error_message": "model response is not valid JSON"
+  }
+}
+```
+
 実行の例:
 
 ```bash
@@ -336,6 +350,14 @@ TODO を埋めた後に問題用プログラムへ向ける場合:
 PHASE3_LLM_HANDS_ON_MODULE=examples.hands_on.phase3_llm_planner.problem_program \
 pytest -q tests/test_phase3_llm_hands_on_program.py
 ```
+
+実 LLM API の調査時は、次も確認してください。
+
+```bash
+curl http://localhost:8090/assistant/executions
+```
+
+`planner_diagnostics.error_type`, `planner_diagnostics.error_message`, `planner_diagnostics.used_fallback` を見ると原因を追いやすくなります。
 
 ## Phase 2 のサンプルファイル
 
