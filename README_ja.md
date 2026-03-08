@@ -337,6 +337,28 @@ docker compose -f infra/docker-compose.yml --profile assistant-ui up --build -d 
 
 画面上の assistant API base URL の既定値は `http://localhost:8090` です。
 
+local mock LLM まで含めて 1 コマンドで起動する場合:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-demo up --build -d
+```
+
+これで起動されるもの:
+
+- `assistant-demo`
+- `llm-mock`
+- `assistant-ui`
+
+その後に開く URL:
+
+- [http://localhost:4173](http://localhost:4173)
+
+停止:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-demo down
+```
+
 ### Phase 3 planner モード
 
 assistant は、planner の選択と planner 本体を分離した構成になりました。

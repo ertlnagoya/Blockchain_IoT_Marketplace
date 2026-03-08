@@ -44,6 +44,30 @@ Open:
 
 - http://localhost:4173
 
+## One-command demo
+
+If you also want the local mock LLM, use:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-demo up --build -d
+```
+
+This starts:
+
+- `assistant-demo`
+- `llm-mock`
+- `assistant-ui`
+
+Open:
+
+- http://localhost:4173
+
+Stop:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-demo down
+```
+
 ## Notes
 
 - The assistant API enables CORS for `localhost:5173`, `127.0.0.1:5173`, `localhost:4173`, and `127.0.0.1:4173` by default.

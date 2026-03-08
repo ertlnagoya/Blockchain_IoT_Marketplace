@@ -337,6 +337,28 @@ Then open:
 
 The screen defaults to `http://localhost:8090` as the assistant API base URL.
 
+One-command demo path with the local mock LLM:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-demo up --build -d
+```
+
+This starts:
+
+- `assistant-demo`
+- `llm-mock`
+- `assistant-ui`
+
+Then open:
+
+- [http://localhost:4173](http://localhost:4173)
+
+Stop:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-demo down
+```
+
 ### Phase 3 planner modes
 
 The assistant now separates planner selection from planner implementation.

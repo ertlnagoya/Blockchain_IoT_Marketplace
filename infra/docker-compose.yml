@@ -59,12 +59,32 @@ services:
     ports:
       - "8090:8090"
 
+  assistant-demo:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-assistant-demo
+    profiles: ["assistant-demo"]
+    depends_on:
+      - llm-mock
+    environment:
+      ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+      ASSISTANT_PLANNER_MODE: llm
+      ASSISTANT_PLANNER_NAME: llm-planner-mock-http-v1
+      ASSISTANT_LLM_PROVIDER: openai_compatible
+      ASSISTANT_LLM_API_BASE_URL: http://llm-mock:18000/v1
+      ASSISTANT_LLM_API_KEY: mock-key
+      ASSISTANT_LLM_MODEL: mock-model
+      ASSISTANT_LLM_TIMEOUT_SECONDS: 20
+    ports:
+      - "8090:8090"
+
   llm-mock:
     build:
       context: ..
       dockerfile: assistant/Dockerfile
     container_name: iw3ip-llm-mock
-    profiles: ["llm-mock"]
+    profiles: ["llm-mock", "assistant-demo"]
     command: ["uvicorn", "examples.phase3_llm_mock_server:app", "--host", "0.0.0.0", "--port", "18000"]
     ports:
       - "18000:18000"
@@ -74,7 +94,7 @@ services:
       context: ..
       dockerfile: assistant-ui/Dockerfile
     container_name: iw3ip-assistant-ui
-    profiles: ["assistant-ui"]
+    profiles: ["assistant-ui", "assistant-demo"]
     ports:
       - "4173:4173"
 
