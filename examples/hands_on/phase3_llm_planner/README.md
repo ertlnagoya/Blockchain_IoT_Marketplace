@@ -84,6 +84,36 @@ docker compose -f infra/docker-compose.yml --profile assistant-llm up --build -d
 
 Then run the same program again.
 
+## Local HTTP mock path
+
+If you want to exercise the `openai_compatible` HTTP path without a real external API:
+
+```bash
+uvicorn examples.phase3_llm_mock_server:app --host 127.0.0.1 --port 18000
+```
+
+In another terminal:
+
+```bash
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+Then run:
+
+```bash
+python3 examples/hands_on/phase3_llm_planner/answer_program.py
+```
+
+Expected:
+
+```json
+{
+  "planner_name": "llm-planner-mock-http-v1",
+  "target_area": "park-north"
+}
+```
+
 ## Pytest for the exercise
 
 The repository includes a reusable pytest file for this exercise:

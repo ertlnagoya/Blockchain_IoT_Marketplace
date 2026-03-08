@@ -36,10 +36,13 @@ class ExecutionPlan(BaseModel):
 
 
 class PlannerDiagnostics(BaseModel):
+    status: Literal["ok", "fallback"] = "ok"
     planner_mode: str
     planner_name: str
     provider_name: str
     used_fallback: bool = False
+    summary: str | None = None
+    suggestion: str | None = None
     error_type: str | None = None
     error_message: str | None = None
 

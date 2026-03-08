@@ -262,6 +262,15 @@ The response now also includes `planner_diagnostics`, for example:
 }
 ```
 
+Readable fields:
+
+- `status`
+  - `ok` or `fallback`
+- `summary`
+  - short human-readable explanation
+- `suggestion`
+  - next troubleshooting step
+
 Example execute request:
 
 ```bash
@@ -309,12 +318,27 @@ ASSISTANT_LLM_MODEL=gpt-4.1-mini \
 uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
+Local HTTP mock example:
+
+```bash
+uvicorn examples.phase3_llm_mock_server:app --host 127.0.0.1 --port 18000
+```
+
+Then, in another terminal:
+
+```bash
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
 Matching files:
 
 - `.env.local.example`
 - `examples/phase3_llm.env.example`
+- `examples/phase3_llm_mock.env.example`
 - `examples/phase3_llm_expected_plan.json`
 - `examples/phase3_request_station_warning.json`
+- `examples/phase3_llm_mock_server.py`
 
 Recommended local setup:
 

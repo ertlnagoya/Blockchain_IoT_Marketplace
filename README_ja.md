@@ -262,6 +262,15 @@ curl -X POST http://localhost:8090/assistant/plan \
 }
 ```
 
+見やすくするための項目:
+
+- `status`
+  - `ok` または `fallback`
+- `summary`
+  - 人間向けの短い説明
+- `suggestion`
+  - 次に確認すべき内容
+
 実行の例:
 
 ```bash
@@ -309,12 +318,27 @@ ASSISTANT_LLM_MODEL=gpt-4.1-mini \
 uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
+ローカル HTTP mock の例:
+
+```bash
+uvicorn examples.phase3_llm_mock_server:app --host 127.0.0.1 --port 18000
+```
+
+別ターミナルで:
+
+```bash
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
 対応する example:
 
 - `.env.local.example`
 - `examples/phase3_llm.env.example`
+- `examples/phase3_llm_mock.env.example`
 - `examples/phase3_llm_expected_plan.json`
 - `examples/phase3_request_station_warning.json`
+- `examples/phase3_llm_mock_server.py`
 
 推奨するローカル設定:
 

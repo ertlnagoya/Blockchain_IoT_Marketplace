@@ -8,16 +8,22 @@ class RuleBasedPlanner:
     def __init__(self, planner_name: str) -> None:
         self.planner_name = planner_name
         self._last_diagnostics = PlannerDiagnostics(
+            status="ok",
             planner_mode="rule_based",
             planner_name=self.planner_name,
             provider_name="rule_based",
+            summary="Rule-based planner generated the execution plan.",
+            suggestion="Use the generated plan as-is, or switch to llm mode to compare planner behavior.",
         )
 
     def plan(self, request_text: str) -> ExecutionPlan:
         self._last_diagnostics = PlannerDiagnostics(
+            status="ok",
             planner_mode="rule_based",
             planner_name=self.planner_name,
             provider_name="rule_based",
+            summary="Rule-based planner generated the execution plan.",
+            suggestion="Use the generated plan as-is, or switch to llm mode to compare planner behavior.",
         )
         text = request_text.lower()
 

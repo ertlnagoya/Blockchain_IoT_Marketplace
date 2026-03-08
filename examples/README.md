@@ -29,10 +29,14 @@ Other hands-on exercise directories:
   - sample observed events
 - `examples/phase3_llm.env.example`
   - environment variable template for an actual OpenAI-compatible LLM API
+- `examples/phase3_llm_mock.env.example`
+  - environment variable template for the local HTTP mock server
 - `.env.local.example`
   - local shell template to be copied to `.env.local`
 - `examples/phase3_llm_expected_plan.json`
   - example shape expected from `/assistant/plan`
+- `examples/phase3_llm_mock_server.py`
+  - local OpenAI-compatible mock server for `/v1/chat/completions`
 
 ### Phase 3 with stub LLM provider
 
@@ -102,6 +106,35 @@ curl -X POST http://localhost:8090/assistant/plan \
 ```
 
 The expected shape is documented in `examples/phase3_llm_expected_plan.json`.
+
+### Phase 3 with the local HTTP mock server
+
+Start the mock server:
+
+```bash
+uvicorn examples.phase3_llm_mock_server:app --host 127.0.0.1 --port 18000
+```
+
+In another terminal:
+
+```bash
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+Then call:
+
+```bash
+curl -X POST http://localhost:8090/assistant/plan \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
+Expected:
+
+```json
+{"status":"planned","planner_diagnostics":{"provider_name":"openai_compatible","used_fallback":false}}
+```
 
 ## Consent VC registration
 

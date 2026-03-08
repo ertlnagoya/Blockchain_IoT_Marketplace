@@ -29,19 +29,25 @@ class LLMPlanner:
         self.fallback_planner = fallback_planner or RuleBasedPlanner("rule-based-fallback-v1")
         self.system_prompt = build_system_prompt()
         self._last_diagnostics = PlannerDiagnostics(
+            status="ok",
             planner_mode="llm",
             planner_name=self.planner_name,
             provider_name=self.provider.provider_name,
+            summary="LLM planner is ready.",
+            suggestion="Call /assistant/plan with a request to generate a structured plan.",
         )
 
     def plan(self, request_text: str) -> ExecutionPlan:
         provider_name = getattr(self.provider, "provider_name", "unknown")
         try:
             self._last_diagnostics = PlannerDiagnostics(
+                status="ok",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,
                 used_fallback=False,
+                summary="LLM response was accepted and converted into an execution plan.",
+                suggestion="Continue with /assistant/execute or inspect the generated plan.",
             )
             payload = self.provider.generate_json(
                 system_prompt=self.system_prompt,
@@ -57,10 +63,13 @@ class LLMPlanner:
             return validate_plan(plan)
         except (ValidationError, PlanValidationError, LLMProviderError, ValueError) as exc:
             self._last_diagnostics = PlannerDiagnostics(
+                status="fallback",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,
                 used_fallback=True,
+                summary="LLM response could not be used, so the rule-based fallback planner generated the plan.",
+                suggestion="Check error_type, error_message, API credentials, and whether the model returned valid JSON.",
                 error_type=type(exc).__name__,
                 error_message=str(exc),
             )
