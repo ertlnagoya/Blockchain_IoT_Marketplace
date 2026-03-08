@@ -1,0 +1,42 @@
+[
+  {
+    "event_type": "possible_littering",
+    "location": "park-north",
+    "ts": "2026-03-08T11:00:00Z",
+    "severity": "medium",
+    "data": {
+      "camera_id": "webcam-401",
+      "confidence": 0.87
+    }
+  },
+  {
+    "event_type": "possible_littering",
+    "location": "park-north",
+    "ts": "2026-03-08T11:05:00Z",
+    "severity": "medium",
+    "data": {
+      "camera_id": "webcam-401",
+      "confidence": 0.89
+    }
+  },
+  {
+    "event_type": "possible_littering",
+    "location": "park-north",
+    "ts": "2026-03-08T11:10:00Z",
+    "severity": "high",
+    "data": {
+      "camera_id": "webcam-401",
+      "confidence": 0.91
+    }
+  },
+  {
+    "event_type": "person_detected",
+    "location": "park-north",
+    "ts": "2026-03-08T11:12:00Z",
+    "severity": "low",
+    "data": {
+      "camera_id": "webcam-401",
+      "confidence": 0.96
+    }
+  }
+]

@@ -197,6 +197,58 @@ docker compose -f infra/docker-compose.yml down
 - Phase 2 (design hook): event-oriented sharing (inference/events)
 - Phase 3 (design hook): SSI gateway / PEP before publisher
 
+## Phase 3 Regional Safety Assistant Sample
+
+This branch also adds a minimal Phase 3 prototype that interprets a human request, decomposes it into tasks, evaluates recent events, and triggers dummy device actions.
+
+Flow:
+
+`human request -> planner -> execution plan -> event evaluation -> action commands`
+
+Implemented endpoints:
+- `GET /health`
+- `POST /assistant/plan`
+- `POST /assistant/execute`
+- `GET /assistant/executions`
+
+Minimal demo request:
+
+```json
+{
+  "request_text": "If littering or suspicious behavior increases near the north side of the park, let me know. Turn on the lights and notify the manager if needed."
+}
+```
+
+Main sample files:
+- `examples/phase3_request_park_safety.json`
+- `examples/phase3_events_park_safety.json`
+- `assistant/app/main.py`
+- `assistant/app/planner.py`
+- `assistant/app/evaluator.py`
+- `assistant/app/actuator.py`
+
+Quick run example:
+
+```bash
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+Example plan request:
+
+```bash
+curl -X POST http://localhost:8090/assistant/plan \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
+Example execute request:
+
+```bash
+curl -X POST http://localhost:8090/assistant/execute \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
 ## Phase 2 Example Files
 
 The repository now also includes Phase 2 event-sharing example files so that the website hands-on pages and the source repository use the same names and payloads.
@@ -225,13 +277,14 @@ For workshop exercise versions with problem programs and reference solutions, se
 
 ## Directory Structure
 
+- `assistant/` : Phase 3 regional safety assistant (planner, evaluator, actuator, API)
 - `publisher/` : FastAPI-based Data Publisher
 - `schemas/` : normalization and common schemas
 - `policy/` : Consent VC model, signature verifier interface, policy engine
 - `audit/` : audit DB access layer (SQLite now, replaceable later)
 - `infra/` : docker compose, Mosquitto config, optional Node-RED
-- `examples/` : sample payloads, sample consents, demo commands
-- `tests/` : pytest tests (policy, normalization, audit)
+- `examples/` : sample payloads, sample consents, Phase 3 request/event fixtures, demo commands
+- `tests/` : pytest tests (policy, normalization, audit, assistant)
 
 ## Quick Start (Docker)
 

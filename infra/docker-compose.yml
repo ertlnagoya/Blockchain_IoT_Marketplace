@@ -28,6 +28,18 @@ services:
     volumes:
       - publisher_data:/data
 
+  assistant:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-assistant
+    profiles: ["assistant"]
+    environment:
+      ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+      ASSISTANT_PLANNER_NAME: rule-based-planner-v1
+    ports:
+      - "8090:8090"
+
   nodered:
     image: nodered/node-red:latest
     container_name: iw3ip-nodered

@@ -197,6 +197,58 @@ docker compose -f infra/docker-compose.yml down
 - Phase 2（設計フック）: イベント指向共有（推論結果など）
 - Phase 3（設計フック）: SSI Gateway / PEP 前段配置
 
+## Phase 3 地域安全アシスタントサンプル
+
+このブランチでは、自然言語の要求を解釈し、タスク分解し、イベント評価を行い、ダミー機器操作まで実行する Phase 3 の最小プロトタイプも追加しています。
+
+流れ:
+
+`人間の要求 -> planner -> 実行計画 -> イベント評価 -> 機器操作コマンド`
+
+実装済み API:
+- `GET /health`
+- `POST /assistant/plan`
+- `POST /assistant/execute`
+- `GET /assistant/executions`
+
+最小の要求例:
+
+```json
+{
+  "request_text": "公園北側でポイ捨てや危険行動が増えていたら教えて。必要なら照明をつけて管理者に通知して。"
+}
+```
+
+主なサンプルファイル:
+- `examples/phase3_request_park_safety.json`
+- `examples/phase3_events_park_safety.json`
+- `assistant/app/main.py`
+- `assistant/app/planner.py`
+- `assistant/app/evaluator.py`
+- `assistant/app/actuator.py`
+
+最小実行例:
+
+```bash
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+計画生成の例:
+
+```bash
+curl -X POST http://localhost:8090/assistant/plan \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
+実行の例:
+
+```bash
+curl -X POST http://localhost:8090/assistant/execute \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
 ## Phase 2 のサンプルファイル
 
 ウェブサイト側の Phase 2 Hands-on と、ソースコードリポジトリ側のファイル名・JSON 内容が一致するように、Phase 2 用のサンプルファイルも追加しています。
@@ -227,13 +279,14 @@ docker compose -f infra/docker-compose.yml down
 
 ## ディレクトリ構成
 
+- `assistant/` : Phase 3 地域安全アシスタント（planner / evaluator / actuator / API）
 - `publisher/` : FastAPI ベース Data Publisher
 - `schemas/` : 正規化スキーマ
 - `policy/` : Consent VC モデル、署名検証インタフェース、ポリシー判定
 - `audit/` : 監査DBアクセス層（現状 SQLite、将来差し替え可能）
 - `infra/` : docker compose、Mosquitto設定、任意 Node-RED
-- `examples/` : サンプル payload / Consent VC / 動作確認コマンド
-- `tests/` : pytest（policy / normalization / audit）
+- `examples/` : サンプル payload / Consent VC / Phase 3 用 request / event / 動作確認コマンド
+- `tests/` : pytest（policy / normalization / audit / assistant）
 
 ## クイックスタート（Docker）
 
