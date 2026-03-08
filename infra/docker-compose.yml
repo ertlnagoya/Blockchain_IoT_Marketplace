@@ -46,6 +46,19 @@ services:
     ports:
       - "8090:8090"
 
+  assistant-llm:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-assistant-llm
+    profiles: ["assistant-llm"]
+    env_file:
+      - ../.env.local
+    environment:
+      ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+    ports:
+      - "8090:8090"
+
   nodered:
     image: nodered/node-red:latest
     container_name: iw3ip-nodered

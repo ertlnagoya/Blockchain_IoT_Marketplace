@@ -77,6 +77,12 @@ cp .env.local.example .env.local
 source .env.local
 ```
 
+Docker Compose example for an actual OpenAI-compatible API:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-llm up --build -d assistant-llm
+```
+
 Common trouble points:
 
 - `401 Unauthorized`

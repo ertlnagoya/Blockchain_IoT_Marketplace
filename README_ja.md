@@ -309,6 +309,12 @@ cp .env.local.example .env.local
 source .env.local
 ```
 
+Docker Compose の例:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-llm up --build -d assistant-llm
+```
+
 `openai_compatible` のよくあるつまずき:
 
 - `401 Unauthorized`
@@ -317,6 +323,19 @@ source .env.local
   - `ASSISTANT_LLM_API_BASE_URL` を確認してください
 - いつも rule-based planner にフォールバックする
   - model が JSON を返しているか確認してください
+
+演習用 pytest:
+
+```bash
+pytest -q tests/test_phase3_llm_hands_on_program.py
+```
+
+TODO を埋めた後に問題用プログラムへ向ける場合:
+
+```bash
+PHASE3_LLM_HANDS_ON_MODULE=examples.hands_on.phase3_llm_planner.problem_program \
+pytest -q tests/test_phase3_llm_hands_on_program.py
+```
 
 ## Phase 2 のサンプルファイル
 

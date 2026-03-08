@@ -309,6 +309,12 @@ cp .env.local.example .env.local
 source .env.local
 ```
 
+Docker Compose example:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile assistant-llm up --build -d assistant-llm
+```
+
 Common troubleshooting for `openai_compatible`:
 
 - `401 Unauthorized`
@@ -317,6 +323,19 @@ Common troubleshooting for `openai_compatible`:
   - check `ASSISTANT_LLM_API_BASE_URL`
 - the response always falls back to the rule-based planner
   - check whether the model returned valid JSON content
+
+Exercise pytest:
+
+```bash
+pytest -q tests/test_phase3_llm_hands_on_program.py
+```
+
+To run the same test against the exercise file after implementing the TODOs:
+
+```bash
+PHASE3_LLM_HANDS_ON_MODULE=examples.hands_on.phase3_llm_planner.problem_program \
+pytest -q tests/test_phase3_llm_hands_on_program.py
+```
 
 ## Phase 2 Example Files
 

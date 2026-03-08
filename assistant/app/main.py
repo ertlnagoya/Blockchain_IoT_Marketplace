@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -53,7 +53,8 @@ def create_plan(req: PlanRequest) -> dict:
 def execute(req: ExecuteRequest) -> dict:
     plan = planner.plan(req.request_text)
     events = req.observed_events or _load_sample_events()
-    evaluation = evaluator.evaluate(plan, events)
+    evaluation_now = (max((event.ts for event in events), default=datetime.now(UTC)) + timedelta(seconds=1))
+    evaluation = evaluator.evaluate(plan, events, now=evaluation_now)
     actions_executed = actuator.execute(plan.actions) if evaluation.triggered else []
 
     record = ExecutionRecord(
