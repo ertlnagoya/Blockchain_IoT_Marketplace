@@ -297,9 +297,26 @@ uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 
 Matching files:
 
+- `.env.local.example`
 - `examples/phase3_llm.env.example`
 - `examples/phase3_llm_expected_plan.json`
 - `examples/phase3_request_station_warning.json`
+
+Recommended local setup:
+
+```bash
+cp .env.local.example .env.local
+source .env.local
+```
+
+Common troubleshooting for `openai_compatible`:
+
+- `401 Unauthorized`
+  - check `ASSISTANT_LLM_API_KEY`
+- `404` or `405`
+  - check `ASSISTANT_LLM_API_BASE_URL`
+- the response always falls back to the rule-based planner
+  - check whether the model returned valid JSON content
 
 ## Phase 2 Example Files
 
@@ -326,6 +343,7 @@ For workshop exercise versions with problem programs and reference solutions, se
 - `examples/hands_on/phase1_ha_ssi_publisher/`
 - `examples/hands_on/phase2_environment_disaster/`
 - `examples/hands_on/phase2_webcam_event_sharing/`
+- `examples/hands_on/phase3_llm_planner/`
 
 ## Directory Structure
 

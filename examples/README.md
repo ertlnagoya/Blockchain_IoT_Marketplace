@@ -29,6 +29,8 @@ Other hands-on exercise directories:
   - sample observed events
 - `examples/phase3_llm.env.example`
   - environment variable template for an actual OpenAI-compatible LLM API
+- `.env.local.example`
+  - local shell template to be copied to `.env.local`
 - `examples/phase3_llm_expected_plan.json`
   - example shape expected from `/assistant/plan`
 
@@ -67,6 +69,22 @@ Before running this against a real API, replace:
 - `ASSISTANT_LLM_API_KEY`
 - `ASSISTANT_LLM_MODEL`
 - `ASSISTANT_LLM_API_BASE_URL` if you are not using the default OpenAI-compatible endpoint
+
+Recommended local setup:
+
+```bash
+cp .env.local.example .env.local
+source .env.local
+```
+
+Common trouble points:
+
+- `401 Unauthorized`
+  - the API key is missing or invalid
+- `404` or `405`
+  - the base URL does not point to an OpenAI-compatible `/chat/completions` endpoint
+- fallback keeps happening
+  - the model may be returning non-JSON content
 
 Then call:
 

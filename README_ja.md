@@ -297,9 +297,26 @@ uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 
 対応する example:
 
+- `.env.local.example`
 - `examples/phase3_llm.env.example`
 - `examples/phase3_llm_expected_plan.json`
 - `examples/phase3_request_station_warning.json`
+
+推奨するローカル設定:
+
+```bash
+cp .env.local.example .env.local
+source .env.local
+```
+
+`openai_compatible` のよくあるつまずき:
+
+- `401 Unauthorized`
+  - `ASSISTANT_LLM_API_KEY` を確認してください
+- `404` または `405`
+  - `ASSISTANT_LLM_API_BASE_URL` を確認してください
+- いつも rule-based planner にフォールバックする
+  - model が JSON を返しているか確認してください
 
 ## Phase 2 のサンプルファイル
 
@@ -328,6 +345,7 @@ uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 - `examples/hands_on/phase1_ha_ssi_publisher/`
 - `examples/hands_on/phase2_environment_disaster/`
 - `examples/hands_on/phase2_webcam_event_sharing/`
+- `examples/hands_on/phase3_llm_planner/`
 
 ## ディレクトリ構成
 

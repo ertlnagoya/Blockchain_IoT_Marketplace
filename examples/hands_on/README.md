@@ -25,3 +25,5 @@ Each hands-on is organized in its own subdirectory and usually includes:
   - send a `flood_risk_high` event to `/simulate/publish`
 - `phase2_webcam_event_sharing`
   - send a `possible_littering` event to `/simulate/publish`
+- `phase3_llm_planner`
+  - send a request to `/assistant/plan` and inspect the LLM planner output

@@ -33,3 +33,6 @@ site/
 # Python cache
 __pycache__/
 *.pyc
+
+# Local LLM configuration
+.env.local
