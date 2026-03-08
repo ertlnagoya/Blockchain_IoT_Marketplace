@@ -224,6 +224,11 @@ Main sample files:
 - `examples/phase3_events_park_safety.json`
 - `assistant/app/main.py`
 - `assistant/app/planner.py`
+- `assistant/app/planner_interface.py`
+- `assistant/app/planner_factory.py`
+- `assistant/app/rule_based_planner.py`
+- `assistant/app/llm_planner.py`
+- `assistant/app/plan_validator.py`
 - `assistant/app/evaluator.py`
 - `assistant/app/actuator.py`
 
@@ -247,6 +252,28 @@ Example execute request:
 curl -X POST http://localhost:8090/assistant/execute \
   -H 'Content-Type: application/json' \
   -d @examples/phase3_request_park_safety.json
+```
+
+### Phase 3 planner modes
+
+The assistant now separates planner selection from planner implementation.
+
+- `ASSISTANT_PLANNER_MODE=rule_based`
+  - uses `RuleBasedPlanner`
+- `ASSISTANT_PLANNER_MODE=llm`
+  - uses `LLMPlanner`
+- `ASSISTANT_LLM_BACKEND=stub`
+  - self-contained minimal backend for local testing
+
+The current `LLMPlanner` is intentionally minimal. It keeps the same `ExecutionPlan` output contract, validates allowed events/actions/areas, and falls back to the rule-based planner if validation fails.
+
+Example:
+
+```bash
+ASSISTANT_PLANNER_MODE=llm \
+ASSISTANT_PLANNER_NAME=llm-planner-stub-v1 \
+ASSISTANT_LLM_BACKEND=stub \
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
 ## Phase 2 Example Files
@@ -277,7 +304,7 @@ For workshop exercise versions with problem programs and reference solutions, se
 
 ## Directory Structure
 
-- `assistant/` : Phase 3 regional safety assistant (planner, evaluator, actuator, API)
+- `assistant/` : Phase 3 regional safety assistant (planner interface/factory, rule-based planner, minimal LLM planner, evaluator, actuator, API)
 - `publisher/` : FastAPI-based Data Publisher
 - `schemas/` : normalization and common schemas
 - `policy/` : Consent VC model, signature verifier interface, policy engine

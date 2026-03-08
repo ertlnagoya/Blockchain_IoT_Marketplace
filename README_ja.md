@@ -224,6 +224,11 @@ docker compose -f infra/docker-compose.yml down
 - `examples/phase3_events_park_safety.json`
 - `assistant/app/main.py`
 - `assistant/app/planner.py`
+- `assistant/app/planner_interface.py`
+- `assistant/app/planner_factory.py`
+- `assistant/app/rule_based_planner.py`
+- `assistant/app/llm_planner.py`
+- `assistant/app/plan_validator.py`
 - `assistant/app/evaluator.py`
 - `assistant/app/actuator.py`
 
@@ -247,6 +252,29 @@ curl -X POST http://localhost:8090/assistant/plan \
 curl -X POST http://localhost:8090/assistant/execute \
   -H 'Content-Type: application/json' \
   -d @examples/phase3_request_park_safety.json
+```
+
+### Phase 3 planner モード
+
+assistant は、planner の選択と planner 本体を分離した構成になりました。
+
+- `ASSISTANT_PLANNER_MODE=rule_based`
+  - `RuleBasedPlanner` を使う
+- `ASSISTANT_PLANNER_MODE=llm`
+  - `LLMPlanner` を使う
+- `ASSISTANT_LLM_BACKEND=stub`
+  - 外部 API に依存しない最小 backend
+
+現在の `LLMPlanner` は最小実装です。  
+ただし、`ExecutionPlan` の出力契約は維持し、許可イベント・許可アクション・許可エリアを validator で確認し、失敗時は rule-based planner にフォールバックします。
+
+例:
+
+```bash
+ASSISTANT_PLANNER_MODE=llm \
+ASSISTANT_PLANNER_NAME=llm-planner-stub-v1 \
+ASSISTANT_LLM_BACKEND=stub \
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
 ## Phase 2 のサンプルファイル
@@ -279,7 +307,7 @@ curl -X POST http://localhost:8090/assistant/execute \
 
 ## ディレクトリ構成
 
-- `assistant/` : Phase 3 地域安全アシスタント（planner / evaluator / actuator / API）
+- `assistant/` : Phase 3 地域安全アシスタント（planner interface / factory / rule-based planner / 最小 LLM planner / evaluator / actuator / API）
 - `publisher/` : FastAPI ベース Data Publisher
 - `schemas/` : 正規化スキーマ
 - `policy/` : Consent VC モデル、署名検証インタフェース、ポリシー判定

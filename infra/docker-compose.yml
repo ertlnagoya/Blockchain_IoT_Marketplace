@@ -36,7 +36,9 @@ services:
     profiles: ["assistant"]
     environment:
       ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+      ASSISTANT_PLANNER_MODE: rule_based
       ASSISTANT_PLANNER_NAME: rule-based-planner-v1
+      ASSISTANT_LLM_BACKEND: stub
     ports:
       - "8090:8090"
 

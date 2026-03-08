@@ -11,12 +11,16 @@ from assistant.app.actuator import ActionActuator
 from assistant.app.config import Settings
 from assistant.app.evaluator import EventEvaluator
 from assistant.app.models import EventRecord, ExecuteRequest, ExecutionRecord, PlanRequest
-from assistant.app.planner import RequestPlanner
+from assistant.app.planner_factory import create_planner
 from assistant.app.store import ExecutionStore
 
 
 settings = Settings()
-planner = RequestPlanner(settings.planner_name)
+planner = create_planner(
+    planner_mode=settings.planner_mode,
+    planner_name=settings.planner_name,
+    llm_backend=settings.llm_backend,
+)
 evaluator = EventEvaluator()
 actuator = ActionActuator()
 store = ExecutionStore()
