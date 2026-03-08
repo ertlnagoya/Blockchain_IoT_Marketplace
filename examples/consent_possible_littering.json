@@ -1,0 +1,11 @@
+{
+  "vc_id": "consent-littering-001",
+  "subject_did": "did:example:park-community",
+  "dataset_id": "home/event/possible_littering",
+  "allowed_purposes": ["community_cleaning", "research"],
+  "retention_days": 14,
+  "reshare_allowed": false,
+  "valid_from": "2026-02-01T00:00:00Z",
+  "valid_to": "2026-05-01T00:00:00Z",
+  "signature": "PLACEHOLDER"
+}

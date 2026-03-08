@@ -1,0 +1,11 @@
+{
+  "vc_id": "consent-flood-risk-001",
+  "subject_did": "did:example:river-community",
+  "dataset_id": "home/event/flood_risk_high",
+  "allowed_purposes": ["disaster_response", "research"],
+  "retention_days": 30,
+  "reshare_allowed": false,
+  "valid_from": "2026-02-01T00:00:00Z",
+  "valid_to": "2026-05-01T00:00:00Z",
+  "signature": "PLACEHOLDER"
+}
