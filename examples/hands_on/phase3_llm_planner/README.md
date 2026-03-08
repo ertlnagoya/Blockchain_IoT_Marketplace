@@ -4,7 +4,7 @@
 
 Send a request to `/assistant/plan` while the assistant is running in `llm` mode, then verify that a structured plan is returned.
 
-This exercise is designed for the `codex/llm-planner-minimal` branch.
+This exercise is designed for the `codex/phase3-frontend-demo` branch.
 
 ## Files
 
@@ -170,4 +170,4 @@ pytest -q tests/test_phase3_llm_hands_on_program.py
   - fallback may have happened
   - check `planner_diagnostics.code`, `planner_diagnostics.category`, `planner_diagnostics.label`, `planner_diagnostics.color_hint`, and whether the model returned valid JSON
 - `station-front` is not returned:
-  - make sure you are on branch `codex/llm-planner-minimal`
+  - make sure you are on branch `codex/phase3-frontend-demo`
