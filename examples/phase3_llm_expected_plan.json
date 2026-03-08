@@ -1,0 +1,34 @@
+{
+  "status": "planned",
+  "plan": {
+    "planner_name": "llm-planner-openai-compatible-v1",
+    "intent": "monitor_public_safety",
+    "target_area": "park-north",
+    "time_window_minutes": 30,
+    "watch_events": [
+      "possible_littering",
+      "suspicious_activity"
+    ],
+    "thresholds": {
+      "possible_littering": 3,
+      "suspicious_activity": 1
+    },
+    "actions": [
+      {
+        "action_type": "light_on",
+        "target": "park-north-light-1",
+        "parameters": {
+          "brightness": 80
+        }
+      },
+      {
+        "action_type": "send_notification",
+        "target": "park-north-manager",
+        "parameters": {
+          "channel": "mobile_push"
+        }
+      }
+    ],
+    "original_request": "公園北側でポイ捨てや危険行動が増えていたら教えて。必要なら照明をつけて管理者に通知して。"
+  }
+}

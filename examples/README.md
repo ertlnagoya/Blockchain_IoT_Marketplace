@@ -19,6 +19,65 @@ Other hands-on exercise directories:
 - `examples/hands_on/phase1_ha_ssi_publisher/`
 - `examples/hands_on/phase2_webcam_event_sharing/`
 
+## Phase 3 LLM planner examples
+
+- `examples/phase3_request_park_safety.json`
+  - base request used by both the rule-based and LLM planners
+- `examples/phase3_request_station_warning.json`
+  - English request example for area/action variation
+- `examples/phase3_events_park_safety.json`
+  - sample observed events
+- `examples/phase3_llm.env.example`
+  - environment variable template for an actual OpenAI-compatible LLM API
+- `examples/phase3_llm_expected_plan.json`
+  - example shape expected from `/assistant/plan`
+
+### Phase 3 with stub LLM provider
+
+```bash
+ASSISTANT_PLANNER_MODE=llm \
+ASSISTANT_PLANNER_NAME=llm-planner-stub-v1 \
+ASSISTANT_LLM_PROVIDER=stub \
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+```bash
+curl -X POST http://localhost:8090/assistant/plan \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
+Expected:
+
+```json
+{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"}}
+```
+
+### Phase 3 with an actual OpenAI-compatible API
+
+```bash
+set -a
+source examples/phase3_llm.env.example
+set +a
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+Before running this against a real API, replace:
+
+- `ASSISTANT_LLM_API_KEY`
+- `ASSISTANT_LLM_MODEL`
+- `ASSISTANT_LLM_API_BASE_URL` if you are not using the default OpenAI-compatible endpoint
+
+Then call:
+
+```bash
+curl -X POST http://localhost:8090/assistant/plan \
+  -H 'Content-Type: application/json' \
+  -d @examples/phase3_request_park_safety.json
+```
+
+The expected shape is documented in `examples/phase3_llm_expected_plan.json`.
+
 ## Consent VC registration
 
 ```bash

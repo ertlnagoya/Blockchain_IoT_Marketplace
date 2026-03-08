@@ -19,7 +19,11 @@ settings = Settings()
 planner = create_planner(
     planner_mode=settings.planner_mode,
     planner_name=settings.planner_name,
-    llm_backend=settings.llm_backend,
+    llm_provider=settings.llm_provider,
+    llm_api_base_url=settings.llm_api_base_url,
+    llm_api_key=settings.llm_api_key,
+    llm_model=settings.llm_model,
+    llm_timeout_seconds=settings.llm_timeout_seconds,
 )
 evaluator = EventEvaluator()
 actuator = ActionActuator()

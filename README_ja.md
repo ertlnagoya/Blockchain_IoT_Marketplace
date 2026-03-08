@@ -228,6 +228,8 @@ docker compose -f infra/docker-compose.yml down
 - `assistant/app/planner_factory.py`
 - `assistant/app/rule_based_planner.py`
 - `assistant/app/llm_planner.py`
+- `assistant/app/llm_prompt.py`
+- `assistant/app/llm_provider.py`
 - `assistant/app/plan_validator.py`
 - `assistant/app/evaluator.py`
 - `assistant/app/actuator.py`
@@ -262,20 +264,42 @@ assistant は、planner の選択と planner 本体を分離した構成にな�
   - `RuleBasedPlanner` を使う
 - `ASSISTANT_PLANNER_MODE=llm`
   - `LLMPlanner` を使う
-- `ASSISTANT_LLM_BACKEND=stub`
-  - 外部 API に依存しない最小 backend
+- `ASSISTANT_LLM_PROVIDER=stub`
+  - 外部 API に依存しないローカル provider
+- `ASSISTANT_LLM_PROVIDER=openai_compatible`
+  - 実際の OpenAI 互換 `/chat/completions` API を呼び出す
+- `ASSISTANT_LLM_API_BASE_URL`
+- `ASSISTANT_LLM_API_KEY`
+- `ASSISTANT_LLM_MODEL`
 
-現在の `LLMPlanner` は最小実装です。  
-ただし、`ExecutionPlan` の出力契約は維持し、許可イベント・許可アクション・許可エリアを validator で確認し、失敗時は rule-based planner にフォールバックします。
+現在の `LLMPlanner` は、`ExecutionPlan` の出力契約を維持しつつ、`llm_prompt.py` で prompt を組み立て、許可イベント・許可アクション・許可エリアを validator で確認し、失敗時は rule-based planner にフォールバックします。
 
 例:
 
 ```bash
 ASSISTANT_PLANNER_MODE=llm \
 ASSISTANT_PLANNER_NAME=llm-planner-stub-v1 \
-ASSISTANT_LLM_BACKEND=stub \
+ASSISTANT_LLM_PROVIDER=stub \
 uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
+
+実 API の例:
+
+```bash
+ASSISTANT_PLANNER_MODE=llm \
+ASSISTANT_PLANNER_NAME=llm-planner-openai-compatible-v1 \
+ASSISTANT_LLM_PROVIDER=openai_compatible \
+ASSISTANT_LLM_API_BASE_URL=https://api.openai.com/v1 \
+ASSISTANT_LLM_API_KEY=REPLACE_WITH_YOUR_API_KEY \
+ASSISTANT_LLM_MODEL=gpt-4.1-mini \
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+対応する example:
+
+- `examples/phase3_llm.env.example`
+- `examples/phase3_llm_expected_plan.json`
+- `examples/phase3_request_station_warning.json`
 
 ## Phase 2 のサンプルファイル
 

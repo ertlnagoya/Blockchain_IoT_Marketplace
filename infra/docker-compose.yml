@@ -38,7 +38,11 @@ services:
       ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
       ASSISTANT_PLANNER_MODE: rule_based
       ASSISTANT_PLANNER_NAME: rule-based-planner-v1
-      ASSISTANT_LLM_BACKEND: stub
+      ASSISTANT_LLM_PROVIDER: stub
+      ASSISTANT_LLM_API_BASE_URL: ""
+      ASSISTANT_LLM_API_KEY: ""
+      ASSISTANT_LLM_MODEL: ""
+      ASSISTANT_LLM_TIMEOUT_SECONDS: 20
     ports:
       - "8090:8090"
 

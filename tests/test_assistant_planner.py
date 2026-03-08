@@ -17,7 +17,7 @@ def test_llm_planner_mode_returns_structured_plan() -> None:
     planner = create_planner(
         planner_mode="llm",
         planner_name="llm-planner-stub-v1",
-        llm_backend="stub",
+        llm_provider="stub",
     )
     plan = planner.plan("公園北側でポイ捨てが増えていたら照明をつけて管理者に通知して。")
 

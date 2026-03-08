@@ -228,6 +228,8 @@ Main sample files:
 - `assistant/app/planner_factory.py`
 - `assistant/app/rule_based_planner.py`
 - `assistant/app/llm_planner.py`
+- `assistant/app/llm_prompt.py`
+- `assistant/app/llm_provider.py`
 - `assistant/app/plan_validator.py`
 - `assistant/app/evaluator.py`
 - `assistant/app/actuator.py`
@@ -262,19 +264,42 @@ The assistant now separates planner selection from planner implementation.
   - uses `RuleBasedPlanner`
 - `ASSISTANT_PLANNER_MODE=llm`
   - uses `LLMPlanner`
-- `ASSISTANT_LLM_BACKEND=stub`
-  - self-contained minimal backend for local testing
+- `ASSISTANT_LLM_PROVIDER=stub`
+  - self-contained local provider for testing
+- `ASSISTANT_LLM_PROVIDER=openai_compatible`
+  - calls an actual OpenAI-compatible `/chat/completions` API
+- `ASSISTANT_LLM_API_BASE_URL`
+- `ASSISTANT_LLM_API_KEY`
+- `ASSISTANT_LLM_MODEL`
 
-The current `LLMPlanner` is intentionally minimal. It keeps the same `ExecutionPlan` output contract, validates allowed events/actions/areas, and falls back to the rule-based planner if validation fails.
+The current `LLMPlanner` keeps the same `ExecutionPlan` output contract, builds prompts in `llm_prompt.py`, validates allowed events/actions/areas, and falls back to the rule-based planner if the LLM response is invalid.
 
 Example:
 
 ```bash
 ASSISTANT_PLANNER_MODE=llm \
 ASSISTANT_PLANNER_NAME=llm-planner-stub-v1 \
-ASSISTANT_LLM_BACKEND=stub \
+ASSISTANT_LLM_PROVIDER=stub \
 uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
+
+Actual API example:
+
+```bash
+ASSISTANT_PLANNER_MODE=llm \
+ASSISTANT_PLANNER_NAME=llm-planner-openai-compatible-v1 \
+ASSISTANT_LLM_PROVIDER=openai_compatible \
+ASSISTANT_LLM_API_BASE_URL=https://api.openai.com/v1 \
+ASSISTANT_LLM_API_KEY=REPLACE_WITH_YOUR_API_KEY \
+ASSISTANT_LLM_MODEL=gpt-4.1-mini \
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
+Matching files:
+
+- `examples/phase3_llm.env.example`
+- `examples/phase3_llm_expected_plan.json`
+- `examples/phase3_request_station_warning.json`
 
 ## Phase 2 Example Files
 

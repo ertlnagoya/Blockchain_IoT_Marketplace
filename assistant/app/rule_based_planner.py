@@ -11,7 +11,14 @@ class RuleBasedPlanner:
     def plan(self, request_text: str) -> ExecutionPlan:
         text = request_text.lower()
 
-        target_area = "park-north" if ("公園北側" in request_text or "park north" in text or "north side of the park" in text) else "unknown-area"
+        if "公園北側" in request_text or "park north" in text or "north side of the park" in text:
+            target_area = "park-north"
+        elif "公園南側" in request_text or "park south" in text or "south side of the park" in text:
+            target_area = "park-south"
+        elif "駅前" in request_text or "station front" in text:
+            target_area = "station-front"
+        else:
+            target_area = "unknown-area"
 
         watch_events: list[str] = []
         thresholds: dict[str, int] = {}
