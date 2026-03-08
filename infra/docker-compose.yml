@@ -59,6 +59,16 @@ services:
     ports:
       - "8090:8090"
 
+  llm-mock:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-llm-mock
+    profiles: ["llm-mock"]
+    command: ["uvicorn", "examples.phase3_llm_mock_server:app", "--host", "0.0.0.0", "--port", "18000"]
+    ports:
+      - "18000:18000"
+
   nodered:
     image: nodered/node-red:latest
     container_name: iw3ip-nodered

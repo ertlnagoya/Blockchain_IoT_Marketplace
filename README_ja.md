@@ -266,6 +266,8 @@ curl -X POST http://localhost:8090/assistant/plan \
 
 - `status`
   - `ok` または `fallback`
+- `severity`
+  - `info`, `warning`, `error`
 - `summary`
   - 人間向けの短い説明
 - `suggestion`
@@ -351,6 +353,14 @@ Docker Compose の例:
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile assistant-llm up --build -d assistant-llm
+```
+
+Docker Compose で local HTTP mock を使う例:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile llm-mock up --build -d llm-mock
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
 `openai_compatible` のよくあるつまずき:

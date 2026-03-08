@@ -99,6 +99,14 @@ source examples/phase3_llm_mock.env.example
 uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
+Docker Compose alternative:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile llm-mock up --build -d llm-mock
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
+```
+
 Then run:
 
 ```bash

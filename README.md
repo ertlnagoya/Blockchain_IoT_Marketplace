@@ -266,6 +266,8 @@ Readable fields:
 
 - `status`
   - `ok` or `fallback`
+- `severity`
+  - `info`, `warning`, or `error`
 - `summary`
   - short human-readable explanation
 - `suggestion`
@@ -351,6 +353,14 @@ Docker Compose example:
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile assistant-llm up --build -d assistant-llm
+```
+
+Local HTTP mock with Docker Compose:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile llm-mock up --build -d llm-mock
+source examples/phase3_llm_mock.env.example
+uvicorn assistant.app.main:app --host 0.0.0.0 --port 8090
 ```
 
 Common troubleshooting for `openai_compatible`:

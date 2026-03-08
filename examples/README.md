@@ -56,7 +56,7 @@ curl -X POST http://localhost:8090/assistant/plan \
 Expected:
 
 ```json
-{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"},"planner_diagnostics":{"planner_mode":"llm","provider_name":"stub","used_fallback":false}}
+{"status":"planned","plan":{"planner_name":"llm-planner-stub-v1","target_area":"park-north"},"planner_diagnostics":{"status":"ok","severity":"info","planner_mode":"llm","provider_name":"stub","used_fallback":false}}
 ```
 
 ### Phase 3 with an actual OpenAI-compatible API
@@ -115,6 +115,12 @@ Start the mock server:
 uvicorn examples.phase3_llm_mock_server:app --host 127.0.0.1 --port 18000
 ```
 
+Docker Compose alternative:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile llm-mock up --build -d llm-mock
+```
+
 In another terminal:
 
 ```bash
@@ -133,7 +139,7 @@ curl -X POST http://localhost:8090/assistant/plan \
 Expected:
 
 ```json
-{"status":"planned","planner_diagnostics":{"provider_name":"openai_compatible","used_fallback":false}}
+{"status":"planned","planner_diagnostics":{"provider_name":"openai_compatible","status":"ok","severity":"info","used_fallback":false}}
 ```
 
 ## Consent VC registration

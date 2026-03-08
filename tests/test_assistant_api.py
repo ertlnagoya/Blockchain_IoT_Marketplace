@@ -37,5 +37,6 @@ def test_assistant_plan_returns_planner_diagnostics() -> None:
     assert "planner_diagnostics" in body
     assert body["planner_diagnostics"]["planner_mode"] in {"rule_based", "llm"}
     assert body["planner_diagnostics"]["status"] in {"ok", "fallback"}
+    assert body["planner_diagnostics"]["severity"] in {"info", "warning", "error"}
     assert "summary" in body["planner_diagnostics"]
     assert "suggestion" in body["planner_diagnostics"]

@@ -37,6 +37,7 @@ class ExecutionPlan(BaseModel):
 
 class PlannerDiagnostics(BaseModel):
     status: Literal["ok", "fallback"] = "ok"
+    severity: Literal["info", "warning", "error"] = "info"
     planner_mode: str
     planner_name: str
     provider_name: str

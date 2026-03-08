@@ -30,6 +30,7 @@ class LLMPlanner:
         self.system_prompt = build_system_prompt()
         self._last_diagnostics = PlannerDiagnostics(
             status="ok",
+            severity="info",
             planner_mode="llm",
             planner_name=self.planner_name,
             provider_name=self.provider.provider_name,
@@ -42,6 +43,7 @@ class LLMPlanner:
         try:
             self._last_diagnostics = PlannerDiagnostics(
                 status="ok",
+                severity="info",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,
@@ -64,6 +66,7 @@ class LLMPlanner:
         except (ValidationError, PlanValidationError, LLMProviderError, ValueError) as exc:
             self._last_diagnostics = PlannerDiagnostics(
                 status="fallback",
+                severity="warning",
                 planner_mode="llm",
                 planner_name=self.planner_name,
                 provider_name=provider_name,

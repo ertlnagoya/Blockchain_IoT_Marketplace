@@ -17,6 +17,7 @@ def test_llm_planner_falls_back_when_backend_is_unsupported() -> None:
     assert plan.planner_name == "rule-based-fallback-v1"
     assert plan.target_area == "park-north"
     assert diagnostics.used_fallback is True
+    assert diagnostics.severity == "warning"
     assert diagnostics.error_type == "ValueError"
     assert diagnostics.error_message == "broken"
 

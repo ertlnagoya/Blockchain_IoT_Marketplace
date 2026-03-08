@@ -9,6 +9,7 @@ class RuleBasedPlanner:
         self.planner_name = planner_name
         self._last_diagnostics = PlannerDiagnostics(
             status="ok",
+            severity="info",
             planner_mode="rule_based",
             planner_name=self.planner_name,
             provider_name="rule_based",
@@ -19,6 +20,7 @@ class RuleBasedPlanner:
     def plan(self, request_text: str) -> ExecutionPlan:
         self._last_diagnostics = PlannerDiagnostics(
             status="ok",
+            severity="info",
             planner_mode="rule_based",
             planner_name=self.planner_name,
             provider_name="rule_based",
