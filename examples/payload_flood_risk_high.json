@@ -1,0 +1,11 @@
+{
+  "event_type": "flood_risk_high",
+  "data": {
+    "sensor_id": "river-west-01",
+    "location": "west_river_area",
+    "water_level_m": 1.82,
+    "severity": "high"
+  },
+  "ts": "2026-03-08T10:15:05Z",
+  "source": "edge_inference"
+}

@@ -24,6 +24,8 @@ Example datasets:
 - `home/env/temperature`
 - `home/energy/power`
 - `home/event/person_detected`
+- `home/event/flood_risk_high`
+- `home/event/possible_littering`
 
 ## Runtime Environment
 
@@ -97,10 +99,18 @@ Expected:
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_temperature.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_power.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_person_detected.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_flood_risk_high.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_possible_littering.json
 ```
 
 Expected:
 - each response includes `"status":"stored"`
+
+Phase 2 example files:
+- `examples/consent_flood_risk_high.json`
+- `examples/consent_possible_littering.json`
+- `examples/payload_flood_risk_high.json`
+- `examples/payload_possible_littering.json`
 
 ### 4. Simulate an allowed message (HTTP path)
 
@@ -186,6 +196,23 @@ docker compose -f infra/docker-compose.yml down
 - Phase 1 (implemented): data exchange pipeline + consent-based policy + audit logging
 - Phase 2 (design hook): event-oriented sharing (inference/events)
 - Phase 3 (design hook): SSI gateway / PEP before publisher
+
+## Phase 2 Example Files
+
+The repository now also includes Phase 2 event-sharing example files so that the website hands-on pages and the source repository use the same names and payloads.
+
+- `examples/consent_flood_risk_high.json`
+  - allows `home/event/flood_risk_high` for `disaster_response` and `research`
+- `examples/consent_possible_littering.json`
+  - allows `home/event/possible_littering` for `community_cleaning` and `research`
+- `examples/payload_flood_risk_high.json`
+  - sample event payload for disaster-response sharing
+- `examples/payload_possible_littering.json`
+  - sample event payload for littering-event sharing
+
+If you want a ready-made Phase 2 path, see `examples/README.md` and the website hands-on pages for:
+- environment/disaster event sharing
+- webcam event sharing
 
 ## Directory Structure
 

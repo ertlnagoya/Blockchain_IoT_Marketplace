@@ -1,0 +1,11 @@
+{
+  "event_type": "possible_littering",
+  "data": {
+    "camera_id": "webcam-401",
+    "location": "park-north",
+    "object_class": "bottle",
+    "confidence": 0.87
+  },
+  "ts": "2026-03-08T11:00:00Z",
+  "source": "edge_inference"
+}

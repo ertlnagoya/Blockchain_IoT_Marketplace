@@ -24,6 +24,8 @@ Data Publisher は受信データを正規化し、Consent VC ポリシーを評
 - `home/env/temperature`
 - `home/energy/power`
 - `home/event/person_detected`
+- `home/event/flood_risk_high`
+- `home/event/possible_littering`
 
 ## 実行環境
 
@@ -97,10 +99,18 @@ curl http://localhost:8080/health
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_temperature.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_power.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_person_detected.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_flood_risk_high.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_possible_littering.json
 ```
 
 期待結果:
 - 各レスポンスに `"status":"stored"` を含む
+
+Phase 2 用のサンプルファイル:
+- `examples/consent_flood_risk_high.json`
+- `examples/consent_possible_littering.json`
+- `examples/payload_flood_risk_high.json`
+- `examples/payload_possible_littering.json`
 
 ### 4. 許可されるケースを試す（HTTP疑似投入）
 
@@ -186,6 +196,24 @@ docker compose -f infra/docker-compose.yml down
 - Phase 1（実装済み）: データ交換パイプライン + 同意ベース判定 + 監査ログ
 - Phase 2（設計フック）: イベント指向共有（推論結果など）
 - Phase 3（設計フック）: SSI Gateway / PEP 前段配置
+
+## Phase 2 のサンプルファイル
+
+ウェブサイト側の Phase 2 Hands-on と、ソースコードリポジトリ側のファイル名・JSON 内容が一致するように、Phase 2 用のサンプルファイルも追加しています。
+
+- `examples/consent_flood_risk_high.json`
+  - `home/event/flood_risk_high` を `disaster_response` と `research` で許可
+- `examples/consent_possible_littering.json`
+  - `home/event/possible_littering` を `community_cleaning` と `research` で許可
+- `examples/payload_flood_risk_high.json`
+  - 防災イベント共有用のサンプル payload
+- `examples/payload_possible_littering.json`
+  - ポイ捨てイベント共有用のサンプル payload
+
+すぐに Phase 2 を試したい場合は、`examples/README.md` とウェブサイト側の Hands-on にある:
+- 環境・防災イベント共有
+- USBウェブカメライベント共有
+を参照してください。
 
 ## ディレクトリ構成
 
