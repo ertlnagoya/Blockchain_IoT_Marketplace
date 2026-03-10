@@ -1,5 +1,80 @@
 # IoTxWeb3 Intelligence Platform (IW3IP)
 
+## Home Assistant Demo Simulator Sample (Phase 1 / Phase 2)
+
+Language: **English** | [日本語](README_ja.md)
+
+This branch adds a simulation-oriented sample that connects Home Assistant `demo` entities to the existing IW3IP publisher pipeline.
+
+Main flow:
+
+`Home Assistant demo -> MQTT -> (optional Node-RED) -> Data Publisher -> Platform API / Audit Log`
+
+The goal is to verify IW3IP behavior without physical devices. You can reproduce Phase 1 state sharing and Phase 2 event sharing with a free local environment.
+
+### Quickstart
+
+1. Start the simulation stack.
+
+```bash
+docker compose -f infra/docker-compose.yml --profile ha-demo up --build -d
+```
+
+Optional Node-RED:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile ha-demo --profile nodered up --build -d
+```
+
+2. Confirm the publisher.
+
+```bash
+curl http://localhost:8080/health
+```
+
+3. Open Home Assistant at `http://localhost:8123` and create the local user on the first run.
+
+4. In Home Assistant, add the `MQTT` integration with:
+   - Host: `mosquitto`
+   - Port: `1883`
+
+5. Register the demo consents.
+
+```bash
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_temperature.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_power.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_person_detected.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_flood_risk_high.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_possible_littering.json
+```
+
+6. Run one of the Home Assistant scripts:
+   - `script.iw3ip_publish_demo_temperature`
+   - `script.iw3ip_publish_demo_power`
+   - `script.iw3ip_publish_demo_person_detected`
+   - `script.iw3ip_publish_demo_flood_risk_high`
+   - `script.iw3ip_publish_demo_possible_littering`
+
+7. Check results:
+
+```bash
+curl http://localhost:8080/platform/ingest
+curl http://localhost:8080/audit/logs?limit=10
+```
+
+8. For a denied case, reuse the same payload through `/simulate/publish` and change `purpose` to `advertising`.
+
+Related files:
+
+- `home-assistant-demo/config/configuration.yaml`
+- `home-assistant-demo/config/scripts.yaml`
+- `examples/ha_demo/README.md`
+- `examples/ha_demo/nodered_flows.json`
+- `tests/test_ha_demo_payloads.py`
+- `tests/test_ha_demo_topic_mapping.py`
+
+## Existing Branch Content
+
 ## Home Assistant x SSI Data Publisher Sample (Phase 1)
 
 Language: **English** | [日本語](README_ja.md)

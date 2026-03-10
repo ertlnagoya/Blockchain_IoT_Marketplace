@@ -1,5 +1,80 @@
 # IoTxWeb3 Intelligence Platform (IW3IP)
 
+## Home Assistant Demo Simulator サンプル（Phase 1 / Phase 2）
+
+Language: [English](README.md) | **日本語**
+
+このブランチでは、Home Assistant の `demo` エンティティを既存の IW3IP publisher パイプラインにつなぐ、シミュレーション指向のサンプルを追加します。
+
+主な流れ:
+
+`Home Assistant demo -> MQTT -> (任意 Node-RED) -> Data Publisher -> Platform API / Audit Log`
+
+物理デバイスがなくても IW3IP の動作を確認できるようにするのが目的です。無料で使えるローカル環境だけで、Phase 1 の状態共有と Phase 2 のイベント共有を再現できます。
+
+### クイックスタート
+
+1. シミュレーション環境を起動します。
+
+```bash
+docker compose -f infra/docker-compose.yml --profile ha-demo up --build -d
+```
+
+Node-RED も使う場合:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile ha-demo --profile nodered up --build -d
+```
+
+2. publisher を確認します。
+
+```bash
+curl http://localhost:8080/health
+```
+
+3. `http://localhost:8123` を開き、初回は Home Assistant のローカルユーザを作成します。
+
+4. Home Assistant で `MQTT` integration を追加します。
+   - Host: `mosquitto`
+   - Port: `1883`
+
+5. demo 用 Consent を登録します。
+
+```bash
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_temperature.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_power.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_person_detected.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_flood_risk_high.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_possible_littering.json
+```
+
+6. Home Assistant の次の script を実行します。
+   - `script.iw3ip_publish_demo_temperature`
+   - `script.iw3ip_publish_demo_power`
+   - `script.iw3ip_publish_demo_person_detected`
+   - `script.iw3ip_publish_demo_flood_risk_high`
+   - `script.iw3ip_publish_demo_possible_littering`
+
+7. 結果を確認します。
+
+```bash
+curl http://localhost:8080/platform/ingest
+curl http://localhost:8080/audit/logs?limit=10
+```
+
+8. 拒否ケースは、同じ payload を `/simulate/publish` に流し、`purpose` だけ `advertising` に変えて確認します。
+
+関連ファイル:
+
+- `home-assistant-demo/config/configuration.yaml`
+- `home-assistant-demo/config/scripts.yaml`
+- `examples/ha_demo/README.md`
+- `examples/ha_demo/nodered_flows.json`
+- `tests/test_ha_demo_payloads.py`
+- `tests/test_ha_demo_topic_mapping.py`
+
+## 既存ブランチの内容
+
 ## Home Assistant x SSI Data Publisher サンプル（Phase 1）
 
 Language: [English](README.md) | **日本語**

@@ -1,5 +1,16 @@
 # Examples
 
+## Home Assistant demo simulator examples
+
+- `examples/ha_demo/README.md`
+  - runbook for the Home Assistant demo simulator sample
+- `examples/ha_demo/consent_*.json`
+  - consents used by the Home Assistant demo simulator
+- `examples/ha_demo/payload_*.json`
+  - payloads matching the Home Assistant demo scripts and MQTT topics
+- `examples/ha_demo/nodered_flows.json`
+  - optional Node-RED flow for clickable MQTT injection
+
 ## Hands-on sample programs
 
 - `examples/hands_on/README.md`

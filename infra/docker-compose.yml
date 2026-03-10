@@ -28,6 +28,20 @@ services:
     volumes:
       - publisher_data:/data
 
+  homeassistant-demo:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: iw3ip-homeassistant-demo
+    profiles: ["ha-demo"]
+    depends_on:
+      - mosquitto
+    environment:
+      TZ: Asia/Tokyo
+    ports:
+      - "8123:8123"
+    volumes:
+      - ../home-assistant-demo/config:/config
+    restart: unless-stopped
+
   assistant:
     build:
       context: ..

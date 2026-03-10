@@ -1,0 +1,76 @@
+iw3ip_publish_demo_temperature:
+  alias: IW3IP Publish Demo Temperature
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/state/sensor/temperature
+        payload: >-
+          {{ {
+            "entity_id": "sensor.demo_temperature",
+            "state": "24.5",
+            "attributes": {"unit_of_measurement": "C", "room": "lab-demo"},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+
+iw3ip_publish_demo_power:
+  alias: IW3IP Publish Demo Power
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/state/sensor/power
+        payload: >-
+          {{ {
+            "entity_id": "sensor.demo_power",
+            "state": "430",
+            "attributes": {"unit_of_measurement": "W", "zone": "lab-demo"},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+
+iw3ip_publish_demo_person_detected:
+  alias: IW3IP Publish Demo Person Detected
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/person_detected
+        payload: >-
+          {{ {
+            "event_type": "person_detected",
+            "data": {"camera_id": "ha-demo-camera-01", "confidence": 0.94, "location": "entrance"},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+
+iw3ip_publish_demo_flood_risk_high:
+  alias: IW3IP Publish Demo Flood Risk High
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/flood_risk_high
+        payload: >-
+          {{ {
+            "event_type": "flood_risk_high",
+            "data": {"sensor_id": "ha-demo-river-01", "location": "river-west", "water_level_m": 1.71, "severity": "high"},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+
+iw3ip_publish_demo_possible_littering:
+  alias: IW3IP Publish Demo Possible Littering
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/possible_littering
+        payload: >-
+          {{ {
+            "event_type": "possible_littering",
+            "data": {"camera_id": "ha-demo-camera-01", "location": "park-north", "object_class": "bottle", "confidence": 0.88},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}

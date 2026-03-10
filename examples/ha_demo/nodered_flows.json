@@ -1,0 +1,71 @@
+[
+  {
+    "id": "iw3ip-ha-demo-tab",
+    "type": "tab",
+    "label": "IW3IP HA Demo",
+    "disabled": false,
+    "info": "Inject sample Home Assistant demo payloads into MQTT topics used by IW3IP."
+  },
+  {
+    "id": "iw3ip-mqtt-broker",
+    "type": "mqtt-broker",
+    "name": "iw3ip-mosquitto",
+    "broker": "mosquitto",
+    "port": "1883",
+    "clientid": "",
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true
+  },
+  {
+    "id": "inject-temperature",
+    "type": "inject",
+    "z": "iw3ip-ha-demo-tab",
+    "name": "temperature",
+    "props": [{"p": "payload"}],
+    "payload": "{\"entity_id\":\"sensor.demo_temperature\",\"state\":\"24.5\",\"attributes\":{\"unit_of_measurement\":\"C\"},\"ts\":\"2026-03-10T10:00:00Z\",\"source\":\"home_assistant_demo\"}",
+    "payloadType": "json",
+    "x": 180,
+    "y": 120,
+    "wires": [["mqtt-temperature"]]
+  },
+  {
+    "id": "mqtt-temperature",
+    "type": "mqtt out",
+    "z": "iw3ip-ha-demo-tab",
+    "name": "to temperature topic",
+    "topic": "homeassistant/state/sensor/temperature",
+    "qos": "0",
+    "retain": "false",
+    "broker": "iw3ip-mqtt-broker",
+    "x": 470,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "inject-flood",
+    "type": "inject",
+    "z": "iw3ip-ha-demo-tab",
+    "name": "flood_risk_high",
+    "props": [{"p": "payload"}],
+    "payload": "{\"event_type\":\"flood_risk_high\",\"data\":{\"sensor_id\":\"ha-demo-river-01\",\"location\":\"river-west\",\"water_level_m\":1.71,\"severity\":\"high\"},\"ts\":\"2026-03-10T10:10:00Z\",\"source\":\"home_assistant_demo\"}",
+    "payloadType": "json",
+    "x": 180,
+    "y": 180,
+    "wires": [["mqtt-flood"]]
+  },
+  {
+    "id": "mqtt-flood",
+    "type": "mqtt out",
+    "z": "iw3ip-ha-demo-tab",
+    "name": "to flood topic",
+    "topic": "homeassistant/event/flood_risk_high",
+    "qos": "0",
+    "retain": "false",
+    "broker": "iw3ip-mqtt-broker",
+    "x": 470,
+    "y": 180,
+    "wires": []
+  }
+]
