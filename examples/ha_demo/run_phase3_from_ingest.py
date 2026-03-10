@@ -64,14 +64,19 @@ def build_execute_request(
     }
 
 
+def build_plan_request(request_text: str) -> dict[str, Any]:
+    return {"request_text": request_text}
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build and optionally send a Phase 3 execute request from publisher ingest records.")
+    parser = argparse.ArgumentParser(description="Build and optionally send Phase 3 plan/execute requests from publisher ingest records.")
     parser.add_argument("--publisher-url", default="http://localhost:8080", help="Base URL of the publisher service.")
     parser.add_argument("--assistant-url", default="http://localhost:8090", help="Base URL of the assistant service.")
     parser.add_argument("--request-file", default="", help="Optional JSON file containing request_text.")
     parser.add_argument("--request-text", default=DEFAULT_REQUEST_TEXT, help="Fallback request text.")
     parser.add_argument("--target-area", default="park-north", help="Only include events from this area. Use empty string to disable.")
-    parser.add_argument("--print-only", action="store_true", help="Print the execute request JSON without posting it to the assistant.")
+    parser.add_argument("--print-only", action="store_true", help="Print the request JSON without posting it to the assistant.")
+    parser.add_argument("--plan-only", action="store_true", help="Send POST /assistant/plan instead of POST /assistant/execute.")
     args = parser.parse_args()
 
     request_text = args.request_text
@@ -85,12 +90,16 @@ def main() -> None:
         request_text=request_text,
         target_area=args.target_area or None,
     )
+    plan_request = build_plan_request(request_text)
 
     if args.print_only:
-        print(json.dumps(execute_request, ensure_ascii=False, indent=2))
+        body = plan_request if args.plan_only else execute_request
+        print(json.dumps(body, ensure_ascii=False, indent=2))
         return
 
-    result = post_json(f"{args.assistant_url.rstrip('/')}/assistant/execute", execute_request)
+    endpoint = "/assistant/plan" if args.plan_only else "/assistant/execute"
+    body = plan_request if args.plan_only else execute_request
+    result = post_json(f"{args.assistant_url.rstrip('/')}{endpoint}", body)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

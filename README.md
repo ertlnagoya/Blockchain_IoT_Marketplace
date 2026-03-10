@@ -69,10 +69,13 @@ curl http://localhost:8080/audit/logs?limit=10
 
 8. For a denied case, reuse the same payload through `/simulate/publish` and change `purpose` to `advertising`.
 
-9. For Phase 3, start the assistant and bridge the ingested events into `/assistant/execute`.
+9. For Phase 3, start the assistant, inspect `/assistant/plan`, and then bridge the ingested events into `/assistant/execute`.
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile ha-demo-phase3 up --build -d
+python3 examples/ha_demo/run_phase3_from_ingest.py \
+  --plan-only \
+  --request-file examples/ha_demo/phase3_request_park_safety.json
 python3 examples/ha_demo/run_phase3_from_ingest.py \
   --request-file examples/ha_demo/phase3_request_park_safety.json
 ```

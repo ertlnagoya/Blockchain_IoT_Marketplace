@@ -69,10 +69,13 @@ curl http://localhost:8080/audit/logs?limit=10
 
 8. 拒否ケースは、同じ payload を `/simulate/publish` に流し、`purpose` だけ `advertising` に変えて確認します。
 
-9. Phase 3 では assistant を起動し、`/platform/ingest` にたまったイベントを `/assistant/execute` に橋渡しします。
+9. Phase 3 では assistant を起動し、まず `/assistant/plan` を確認し、その後 `/platform/ingest` にたまったイベントを `/assistant/execute` に橋渡しします。
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile ha-demo-phase3 up --build -d
+python3 examples/ha_demo/run_phase3_from_ingest.py \
+  --plan-only \
+  --request-file examples/ha_demo/phase3_request_park_safety.json
 python3 examples/ha_demo/run_phase3_from_ingest.py \
   --request-file examples/ha_demo/phase3_request_park_safety.json
 ```

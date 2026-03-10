@@ -66,7 +66,15 @@ Start publisher, Home Assistant demo, and assistant together:
 docker compose -f infra/docker-compose.yml --profile ha-demo-phase3 up --build -d
 ```
 
-Run the Home Assistant script `script.iw3ip_publish_demo_phase3_safety_scenario`, then build and send the execute request:
+Run the Home Assistant script `script.iw3ip_publish_demo_phase3_safety_scenario`, then inspect the plan first:
+
+```bash
+python3 examples/ha_demo/run_phase3_from_ingest.py \
+  --plan-only \
+  --request-file examples/ha_demo/phase3_request_park_safety.json
+```
+
+Then execute with the same request:
 
 ```bash
 python3 examples/ha_demo/run_phase3_from_ingest.py \
@@ -76,7 +84,7 @@ python3 examples/ha_demo/run_phase3_from_ingest.py \
 This script:
 
 1. reads `GET /platform/ingest` from the publisher
-2. converts allowed Home Assistant events into `observed_events`
-3. calls `POST /assistant/execute`
+2. calls `POST /assistant/plan` when `--plan-only` is set
+3. converts allowed Home Assistant events into `observed_events` and calls `POST /assistant/execute` otherwise
 
 Use `--print-only` if you want to inspect the generated request body first.
