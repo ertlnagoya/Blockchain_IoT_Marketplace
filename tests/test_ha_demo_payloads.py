@@ -40,6 +40,12 @@ CASES = [
         "home/event/possible_littering",
         "event",
     ),
+    (
+        "homeassistant/event/suspicious_activity",
+        "payload_suspicious_activity.json",
+        "home/event/suspicious_activity",
+        "event",
+    ),
 ]
 
 

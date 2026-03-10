@@ -74,3 +74,69 @@ iw3ip_publish_demo_possible_littering:
             "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "source": "home_assistant_demo"
           } | tojson }}
+
+iw3ip_publish_demo_suspicious_activity:
+  alias: IW3IP Publish Demo Suspicious Activity
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/suspicious_activity
+        payload: >-
+          {{ {
+            "event_type": "suspicious_activity",
+            "data": {"camera_id": "ha-demo-camera-02", "location": "park-north", "activity": "loitering", "confidence": 0.81},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+
+iw3ip_publish_demo_phase3_safety_scenario:
+  alias: IW3IP Publish Demo Phase 3 Safety Scenario
+  mode: single
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/possible_littering
+        payload: >-
+          {{ {
+            "event_type": "possible_littering",
+            "data": {"camera_id": "ha-demo-camera-01", "location": "park-north", "object_class": "bottle", "confidence": 0.88},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+    - delay:
+        seconds: 1
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/possible_littering
+        payload: >-
+          {{ {
+            "event_type": "possible_littering",
+            "data": {"camera_id": "ha-demo-camera-01", "location": "park-north", "object_class": "can", "confidence": 0.9},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+    - delay:
+        seconds: 1
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/possible_littering
+        payload: >-
+          {{ {
+            "event_type": "possible_littering",
+            "data": {"camera_id": "ha-demo-camera-01", "location": "park-north", "object_class": "cup", "confidence": 0.92},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}
+    - delay:
+        seconds: 1
+    - action: mqtt.publish
+      data:
+        topic: homeassistant/event/suspicious_activity
+        payload: >-
+          {{ {
+            "event_type": "suspicious_activity",
+            "data": {"camera_id": "ha-demo-camera-02", "location": "park-north", "activity": "loitering", "confidence": 0.81},
+            "ts": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "home_assistant_demo"
+          } | tojson }}

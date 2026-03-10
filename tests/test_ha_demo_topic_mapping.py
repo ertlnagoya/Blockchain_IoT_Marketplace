@@ -11,6 +11,7 @@ CONSENT_FILES = [
     "consent_person_detected.json",
     "consent_flood_risk_high.json",
     "consent_possible_littering.json",
+    "consent_suspicious_activity.json",
 ]
 PAYLOAD_FILES = [
     "payload_temperature.json",
@@ -18,6 +19,7 @@ PAYLOAD_FILES = [
     "payload_person_detected.json",
     "payload_flood_risk_high.json",
     "payload_possible_littering.json",
+    "payload_suspicious_activity.json",
 ]
 
 

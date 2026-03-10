@@ -5,9 +5,13 @@
 - `examples/ha_demo/README.md`
   - runbook for the Home Assistant demo simulator sample
 - `examples/ha_demo/consent_*.json`
-  - consents used by the Home Assistant demo simulator
+  - consents used by the Home Assistant demo simulator across Phase 1 / 2 / 3
 - `examples/ha_demo/payload_*.json`
   - payloads matching the Home Assistant demo scripts and MQTT topics
+- `examples/ha_demo/run_phase3_from_ingest.py`
+  - bridge from publisher `/platform/ingest` records into assistant `/assistant/execute`
+- `examples/ha_demo/phase3_request_park_safety.json`
+  - request text used for the Home Assistant demo Phase 3 assistant path
 - `examples/ha_demo/nodered_flows.json`
   - optional Node-RED flow for clickable MQTT injection
 

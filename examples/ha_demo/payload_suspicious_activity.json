@@ -1,0 +1,11 @@
+{
+  "event_type": "suspicious_activity",
+  "data": {
+    "camera_id": "ha-demo-camera-02",
+    "location": "park-north",
+    "activity": "loitering",
+    "confidence": 0.81
+  },
+  "ts": "2026-03-10T10:12:00Z",
+  "source": "home_assistant_demo"
+}

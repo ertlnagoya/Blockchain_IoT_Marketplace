@@ -1,16 +1,18 @@
 # IoTxWeb3 Intelligence Platform (IW3IP)
 
-## Home Assistant Demo Simulator Sample (Phase 1 / Phase 2)
+## Home Assistant Demo Simulator Sample (Phase 1 / Phase 2 / Phase 3)
 
 Language: **English** | [日本語](README_ja.md)
 
 This branch adds a simulation-oriented sample that connects Home Assistant `demo` entities to the existing IW3IP publisher pipeline.
 
-Main flow:
+Main flows:
 
 `Home Assistant demo -> MQTT -> (optional Node-RED) -> Data Publisher -> Platform API / Audit Log`
 
-The goal is to verify IW3IP behavior without physical devices. You can reproduce Phase 1 state sharing and Phase 2 event sharing with a free local environment.
+`Home Assistant demo -> MQTT -> Data Publisher -> /platform/ingest -> Assistant -> plan / execute`
+
+The goal is to verify IW3IP behavior without physical devices. You can reproduce Phase 1 state sharing, Phase 2 event sharing, and a Phase 3 assistant flow with a free local environment.
 
 ### Quickstart
 
@@ -46,6 +48,7 @@ curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' 
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_person_detected.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_flood_risk_high.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_possible_littering.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_suspicious_activity.json
 ```
 
 6. Run one of the Home Assistant scripts:
@@ -54,6 +57,8 @@ curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' 
    - `script.iw3ip_publish_demo_person_detected`
    - `script.iw3ip_publish_demo_flood_risk_high`
    - `script.iw3ip_publish_demo_possible_littering`
+   - `script.iw3ip_publish_demo_suspicious_activity`
+   - `script.iw3ip_publish_demo_phase3_safety_scenario`
 
 7. Check results:
 
@@ -64,14 +69,25 @@ curl http://localhost:8080/audit/logs?limit=10
 
 8. For a denied case, reuse the same payload through `/simulate/publish` and change `purpose` to `advertising`.
 
+9. For Phase 3, start the assistant and bridge the ingested events into `/assistant/execute`.
+
+```bash
+docker compose -f infra/docker-compose.yml --profile ha-demo-phase3 up --build -d
+python3 examples/ha_demo/run_phase3_from_ingest.py \
+  --request-file examples/ha_demo/phase3_request_park_safety.json
+```
+
 Related files:
 
 - `home-assistant-demo/config/configuration.yaml`
 - `home-assistant-demo/config/scripts.yaml`
 - `examples/ha_demo/README.md`
 - `examples/ha_demo/nodered_flows.json`
+- `examples/ha_demo/run_phase3_from_ingest.py`
+- `examples/ha_demo/phase3_request_park_safety.json`
 - `tests/test_ha_demo_payloads.py`
 - `tests/test_ha_demo_topic_mapping.py`
+- `tests/test_ha_demo_phase3_bridge.py`
 
 ## Existing Branch Content
 

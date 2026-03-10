@@ -1,6 +1,6 @@
 # IoTxWeb3 Intelligence Platform (IW3IP)
 
-## Home Assistant Demo Simulator サンプル（Phase 1 / Phase 2）
+## Home Assistant Demo Simulator サンプル（Phase 1 / Phase 2 / Phase 3）
 
 Language: [English](README.md) | **日本語**
 
@@ -10,7 +10,9 @@ Language: [English](README.md) | **日本語**
 
 `Home Assistant demo -> MQTT -> (任意 Node-RED) -> Data Publisher -> Platform API / Audit Log`
 
-物理デバイスがなくても IW3IP の動作を確認できるようにするのが目的です。無料で使えるローカル環境だけで、Phase 1 の状態共有と Phase 2 のイベント共有を再現できます。
+`Home Assistant demo -> MQTT -> Data Publisher -> /platform/ingest -> Assistant -> plan / execute`
+
+物理デバイスがなくても IW3IP の動作を確認できるようにするのが目的です。無料で使えるローカル環境だけで、Phase 1 の状態共有、Phase 2 のイベント共有、Phase 3 の assistant 実行を再現できます。
 
 ### クイックスタート
 
@@ -46,6 +48,7 @@ curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' 
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_person_detected.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_flood_risk_high.json
 curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_possible_littering.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/ha_demo/consent_suspicious_activity.json
 ```
 
 6. Home Assistant の次の script を実行します。
@@ -54,6 +57,8 @@ curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' 
    - `script.iw3ip_publish_demo_person_detected`
    - `script.iw3ip_publish_demo_flood_risk_high`
    - `script.iw3ip_publish_demo_possible_littering`
+   - `script.iw3ip_publish_demo_suspicious_activity`
+   - `script.iw3ip_publish_demo_phase3_safety_scenario`
 
 7. 結果を確認します。
 
@@ -64,14 +69,25 @@ curl http://localhost:8080/audit/logs?limit=10
 
 8. 拒否ケースは、同じ payload を `/simulate/publish` に流し、`purpose` だけ `advertising` に変えて確認します。
 
+9. Phase 3 では assistant を起動し、`/platform/ingest` にたまったイベントを `/assistant/execute` に橋渡しします。
+
+```bash
+docker compose -f infra/docker-compose.yml --profile ha-demo-phase3 up --build -d
+python3 examples/ha_demo/run_phase3_from_ingest.py \
+  --request-file examples/ha_demo/phase3_request_park_safety.json
+```
+
 関連ファイル:
 
 - `home-assistant-demo/config/configuration.yaml`
 - `home-assistant-demo/config/scripts.yaml`
 - `examples/ha_demo/README.md`
 - `examples/ha_demo/nodered_flows.json`
+- `examples/ha_demo/run_phase3_from_ingest.py`
+- `examples/ha_demo/phase3_request_park_safety.json`
 - `tests/test_ha_demo_payloads.py`
 - `tests/test_ha_demo_topic_mapping.py`
+- `tests/test_ha_demo_phase3_bridge.py`
 
 ## 既存ブランチの内容
 

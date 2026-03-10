@@ -1,0 +1,11 @@
+{
+  "vc_id": "consent-ha-demo-suspicious-activity-001",
+  "subject_did": "did:example:ha-demo-operator",
+  "dataset_id": "home/event/suspicious_activity",
+  "allowed_purposes": ["community_safety", "research"],
+  "retention_days": 30,
+  "reshare_allowed": false,
+  "valid_from": "2026-02-01T00:00:00Z",
+  "valid_to": "2026-12-31T23:59:59Z",
+  "signature": "PLACEHOLDER"
+}

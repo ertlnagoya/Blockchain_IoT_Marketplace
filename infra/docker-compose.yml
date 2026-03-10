@@ -31,7 +31,7 @@ services:
   homeassistant-demo:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: iw3ip-homeassistant-demo
-    profiles: ["ha-demo"]
+    profiles: ["ha-demo", "ha-demo-phase3"]
     depends_on:
       - mosquitto
     environment:
@@ -47,7 +47,7 @@ services:
       context: ..
       dockerfile: assistant/Dockerfile
     container_name: iw3ip-assistant
-    profiles: ["assistant"]
+    profiles: ["assistant", "ha-demo-phase3"]
     environment:
       ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
       ASSISTANT_PLANNER_MODE: rule_based
