@@ -1,0 +1,11 @@
+{
+  "vc_id": "consent-002",
+  "subject_did": "did:example:alice",
+  "dataset_id": "home/energy/power",
+  "allowed_purposes": ["research"],
+  "retention_days": 30,
+  "reshare_allowed": false,
+  "valid_from": "2026-02-01T00:00:00Z",
+  "valid_to": "2026-05-01T00:00:00Z",
+  "signature": "PLACEHOLDER"
+}

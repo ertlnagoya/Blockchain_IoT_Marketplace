@@ -1,233 +1,426 @@
 # IoTxWeb3 Intelligence Platform (IW3IP)
 
-![Solidity](https://img.shields.io/badge/Solidity-%23363636.svg?style=for-the-badge&logo=solidity&logoColor=white)
-![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
-![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
-![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
-![NPM](https://img.shields.io/badge/NPM-%23CB3837.svg?style=for-the-badge&logo=npm&logoColor=white)
-![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)
-![Svelte](https://img.shields.io/badge/svelte-%23f1413d.svg?style=for-the-badge&logo=svelte&logoColor=white)
-![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
+## Home Assistant x SSI Data Publisher Sample (Phase 1)
 
-<table>
-	<thead>
-    	<tr>
-      		<th style="text-align:center">English</th>
-      		<th style="text-align:center"><a href="README_ja.md">日本語</a></th>
-    	</tr>
-  	</thead>
-</table>
+Language: **English** | [日本語](README_ja.md)
 
-## Overview
+This branch provides a minimal, extensible prototype for user-sovereign IoT data sharing:
 
-Proof of Concept (PoC) for a decentralized demand-supply matching system that supports data distribution.  
-You can simulate the flow of IoT device data using blockchain technology.
+Home Assistant -> MQTT -> (optional Node-RED) -> Data Publisher -> Data Sharing Platform API
 
-### Workflow for Data Distribution
+The Data Publisher normalizes incoming data, evaluates Consent VC policy, sends only allowed data, and records audit logs.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Mediator(IoTOwner)
-    actor iotOwner as IoT Owner
-    participant Merchandise
-    participant IoTMarketplace as Marketplace
-    participant Frontend as UI Application
-    actor buyer as Data Buyer
-    participant Mediator(buyer)
-    Mediator(IoTOwner)->>IoTMarketplace: Deploy
-    Note right of Mediator(IoTOwner): Metadata like hash values
-    IoTMarketplace->>Merchandise: Constructor
-    buyer->>Frontend: Data purchase request
-    Note left of buyer: Signature via wallet
-    Frontend->>Merchandise: purchase
-    Mediator(buyer)->>Mediator(IoTOwner): Request actual data
-    Mediator(buyer)->>Mediator(buyer): Hash()
-    Mediator(buyer)->>Merchandise: verify()
-    Mediator(IoTOwner)->>Merchandise: withdraw()
-```
+## What This Sample Demonstrates
 
-## Requirements
+This sample is a minimum working prototype for sharing Home Assistant data with a user-sovereign model (SSI/DID/VC).
 
-- Docker  
-- VSCode (Extensions: Docker + DevContainers)
-- Docker Desktop is recommended (for `host.docker.internal` support).
+- Receives state/event data from Home Assistant via MQTT
+- Normalizes input into a common schema and assigns `dataset_id`
+- Evaluates Consent VC conditions (`dataset_id`, `purpose`, validity window)
+- Sends only permitted data to Platform API
+- Stores `allow` / `deny` / `send_error` in SQLite audit logs
 
-## Setup
+Example datasets:
+- `home/env/temperature`
+- `home/energy/power`
+- `home/event/person_detected`
+- `home/event/flood_risk_high`
+- `home/event/possible_littering`
 
-### 1. Clone the Repository
+## Runtime Environment
 
-```bash
-git clone --recursive https://github.com/ertlnagoya/Blockchain_IoT_Marketplace.git
-```
+### Required
 
-### 2. Setup hardhat (blockchain tool)
+- Docker / Docker Compose (with `docker compose`)
+- Python 3.11+ (for local run and tests)
+
+### Tech Stack (implemented)
+
+- FastAPI + pydantic (Data Publisher)
+- Eclipse Mosquitto (MQTT)
+- SQLite (audit log DB)
+- pytest (tests)
+- uv (dependency management / local run examples)
+
+### Verified in this branch
+
+- `docker compose -f infra/docker-compose.yml up --build`
+- `GET /health`
+- `POST /consents`
+- `POST /simulate/publish`
+- MQTT ingest via `mosquitto_pub` and audit log recording
+
+## Beginner Quick Guide
+
+If this is your first time, follow this section top to bottom.
+
+### 0. Pre-check (copy and run)
 
 ```bash
-cd iot-market
-code .
+docker --version
+docker compose version
+curl --version
 ```
 
-After opening in VSCode, select `> DevContainer: Rebuild and Reopen in Container` to enter the container.
+Expected:
+- each command prints a version
+- no command-not-found errors
 
-Then execute the following command:
+### 1. Start the system
 
 ```bash
-npx hardhat node
+docker compose -f infra/docker-compose.yml up --build -d
 ```
 
-This will start the local blockchain network.
+Expected:
+- `iw3ip-mosquitto` and `iw3ip-publisher` become `Up`
 
-Open another terminal and run:
+Optional check:
 
 ```bash
-npx hardhat run scripts/deployMerchandiseWithIoTMarket.ts --network localhost
+docker ps --format 'table {{.Names}}\t{{.Status}}'
 ```
 
-This will deploy the IoT Market and several sample data sets on the local network.  
-**Note:** Deployment can be unstable, and the contract name may appear as `UnrecognizedContract`. (This often happens right after creating the DevContainer.)  
-If the deployed contract name does not appear correctly, restart from `npx hardhat node`.
-
-### 3. Setup Metamask
-
-Install [MetaMask](https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn?hl=ja&utm_source=ext_sidebar) as a browser extension.  
-Then, create a new MetaMask wallet (for testing purposes, we recommend using a simple password like `password`).  
-Skip wallet backup protection by selecting “Remind me later.”
-
-Add the blockchain network:  
-![How to add a network](./images/how_to_network.png)
-
-Add accounts using the following four private keys:
-
-```txt
-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-```txt
-0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
-```
-
-```txt
-0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a
-```
-
-```txt
-0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6
-```
-
-Reference: [Running a local Ethereum node with MetaMask (hardhat) #Ubuntu - Qiita](https://qiita.com/middle_aged_rookie_programmer/items/26c3d6667c7d6514c1de)
-
-### 4. Setup Frontend
+### 2. Confirm API is alive
 
 ```bash
-cd iot-market-ui
-code .
+curl http://localhost:8080/health
 ```
 
-Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.
+Expected:
 
-Then run:
+```json
+{"status":"ok","service":"publisher"}
+```
+
+### 3. Register all sample consents
 
 ```bash
-npm run dev
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_temperature.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_power.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_person_detected.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_flood_risk_high.json
+curl -X POST http://localhost:8080/consents -H 'Content-Type: application/json' -d @examples/consent_possible_littering.json
 ```
 
-Access `localhost:5173` to view the frontend.
+Expected:
+- each response includes `"status":"stored"`
 
-### 5. Setup Storage Server
+Phase 2 example files:
+- `examples/consent_flood_risk_high.json`
+- `examples/consent_possible_littering.json`
+- `examples/payload_flood_risk_high.json`
+- `examples/payload_possible_littering.json`
+
+### 4. Simulate an allowed message (HTTP path)
 
 ```bash
-cd simple-storage
-code .
+curl -X POST http://localhost:8080/simulate/publish \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "topic":"homeassistant/state/sensor/temperature",
+    "payload":{
+      "entity_id":"sensor.living_room_temperature",
+      "state":"24.1",
+      "attributes":{"unit_of_measurement":"C"},
+      "ts":"2026-02-28T10:00:00Z",
+      "source":"home_assistant"
+    },
+    "purpose":"research"
+  }'
 ```
 
-Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.
+Expected:
 
-Then run:
+```json
+{"status":"allowed","dataset_id":"home/env/temperature"}
+```
+
+### 5. Simulate a denied message (purpose mismatch)
 
 ```bash
-cargo run
+curl -X POST http://localhost:8080/simulate/publish \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "topic":"homeassistant/state/sensor/power",
+    "payload":{
+      "entity_id":"sensor.main_power",
+      "state":"520",
+      "attributes":{"unit_of_measurement":"W"},
+      "ts":"2026-02-28T10:00:10Z",
+      "source":"home_assistant"
+    },
+    "purpose":"marketing"
+  }'
 ```
 
-This will start the storage server. The server will listen on port 3000.
+Expected:
 
-### 6. Setup IPFS / PostgreSQL (required for Mediator metadata)
+```json
+{"status":"denied","dataset_id":"home/energy/power","reason":"no_matching_consent"}
+```
+
+### 6. Verify audit logs
 
 ```bash
-cd ipfs
-docker compose up -d
+curl http://localhost:8080/audit/logs?limit=5
 ```
 
-Create the metadata table once:
+Expected:
+- includes both `allow` and `deny` actions
+- each row has `message_hash`, `dataset_id`, and `purpose`
+
+### 7. Test MQTT ingestion path
 
 ```bash
-docker exec -it postgres_db psql -U dev -d mydb
+docker exec -i iw3ip-mosquitto mosquitto_pub \
+  -h localhost -p 1883 \
+  -t homeassistant/event/person_detected \
+  -m '{"event_type":"person_detected","data":{"camera_id":"front_door","confidence":0.93},"ts":"2026-02-28T10:00:20Z","source":"edge_inference"}'
 ```
 
-```sql
-CREATE TABLE IF NOT EXISTS ipfs_records (
-    cid TEXT PRIMARY KEY,
-    start_timestamp TIMESTAMP NOT NULL,
-    end_timestamp TIMESTAMP NOT NULL,
-    location GEOGRAPHY(POINT, 4326) NOT NULL,
-    exist_people BOOL NOT NULL
-);
-```
-
-If the `ipfs_node` container keeps restarting with a message about `go-ipfs`, replace `ipfs/go-ipfs:latest` with `ipfs/kubo:latest` in `ipfs/docker-compose.yaml` and restart compose.
-
-### 7. Setup Mediator (owner)
+Then check logs again:
 
 ```bash
-cd mediator-owner
-code .
+curl http://localhost:8080/audit/logs?limit=5
 ```
 
-Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.  
-The required Python libraries will be automatically installed via the `postCreateCommand` in `mediator-owner/.devcontainer/devcontainer.json`.
-
-Then run:
+### 8. Stop services
 
 ```bash
-cargo run -- settings/owner_1.yaml
+docker compose -f infra/docker-compose.yml down
 ```
 
-This will start the Mediator process.  
-The owner is responsible for deploying merchandise and uploading files to the storage server.
-You can switch accounts/configurations by changing `settings/owner_1.yaml` to another `owner_*.yaml`.
+## Scope
 
-### 8. Setup Mediator (buyer)
+- Phase 1 (implemented): data exchange pipeline + consent-based policy + audit logging
+- Phase 2 (design hook): event-oriented sharing (inference/events)
+- Phase 3 (design hook): SSI gateway / PEP before publisher
+
+## Phase 2 Example Files
+
+The repository now also includes Phase 2 event-sharing example files so that the website hands-on pages and the source repository use the same names and payloads.
+
+- `examples/consent_flood_risk_high.json`
+  - allows `home/event/flood_risk_high` for `disaster_response` and `research`
+- `examples/consent_possible_littering.json`
+  - allows `home/event/possible_littering` for `community_cleaning` and `research`
+- `examples/payload_flood_risk_high.json`
+  - sample event payload for disaster-response sharing
+- `examples/payload_possible_littering.json`
+  - sample event payload for littering-event sharing
+
+If you want a ready-made Phase 2 path, see `examples/README.md` and the website hands-on pages for:
+- environment/disaster event sharing
+- webcam event sharing
+
+## Directory Structure
+
+- `publisher/` : FastAPI-based Data Publisher
+- `schemas/` : normalization and common schemas
+- `policy/` : Consent VC model, signature verifier interface, policy engine
+- `audit/` : audit DB access layer (SQLite now, replaceable later)
+- `infra/` : docker compose, Mosquitto config, optional Node-RED
+- `examples/` : sample payloads, sample consents, demo commands
+- `tests/` : pytest tests (policy, normalization, audit)
+
+## Quick Start (Docker)
+
+### 1. Start services
 
 ```bash
-cd mediator-buyer
-code .
+docker compose -f infra/docker-compose.yml up --build
 ```
 
-Open in VSCode and select `> DevContainer: Rebuild and Reopen in Container`.
+This starts:
+- `mosquitto` (MQTT broker)
+- `publisher` (FastAPI + MQTT subscriber)
+- `nodered` (optional, profile: `nodered`)
 
-Then run:
+### 2. Health check
 
 ```bash
-cargo run --bin mediator-b
+curl http://localhost:8080/health
 ```
 
-### 9. Make a Purchase
+Expected:
 
-Place an mp4 file into `raw_data` in the Mediator(owner) directory to trigger recognition of a new video.  
-**Note:** File event notifications are unstable on Docker. If events are not detected, restart `cargo run -- settings/owner_1.yaml` in Mediator(owner). You should see log output like `watcher's event.kind: ...` when successful.
+```json
+{"status":"ok","service":"publisher"}
+```
 
-Access `localhost:5173` and switch the MetaMask account to the one starting with UUID `0x3c`.  
-Then, purchase the product deployed by the Mediator(owner).  
-If everything is set up correctly, the buyer will receive the event and download the file to `downloads/` from the storage server.
+### 3. Register Consent VC
 
-![How it works](./images/how_it_works.png)
+```bash
+curl -X POST http://localhost:8080/consents \
+  -H 'Content-Type: application/json' \
+  -d @examples/consent_temperature.json
+```
 
-## Tips
+### 4. Publish a Home Assistant-like MQTT message
 
-- If you restart the system, the block state in the local network and MetaMask may become unsynchronized, causing contract execution to fail.  
-  - Steps to recover:
-    1. In MetaMask: Settings → Advanced → Clear activity tab data
-    2. Close the browser
-    3. Restart the DevContainer and all components
-    4. Open MetaMask in the browser and log in
-    5. Deposits in each account should recover
+```bash
+docker exec -i iw3ip-mosquitto mosquitto_pub \
+  -h localhost -p 1883 \
+  -t homeassistant/state/sensor/temperature \
+  -m '{"entity_id":"sensor.living_room_temperature","state":"24.1","attributes":{"unit_of_measurement":"C"},"ts":"2026-02-28T10:00:00Z","source":"home_assistant"}'
+```
+
+### 5. Check audit logs
+
+```bash
+curl http://localhost:8080/audit/logs
+```
+
+You should see `allow` entries for permitted datasets/purposes.
+
+## Local Run (uv)
+
+### 1. Install dependencies
+
+```bash
+uv sync
+```
+
+### 2. Run publisher
+
+```bash
+uv run uvicorn publisher.app.main:app --host 0.0.0.0 --port 8080
+```
+
+## Configuration (Environment Variables)
+
+- `PUBLISHER_ID` (default: `publisher-001`)
+- `DEFAULT_PURPOSE` (default: `research`)
+- `MQTT_BROKER_HOST` (default: `mosquitto` in docker / `localhost` locally)
+- `MQTT_BROKER_PORT` (default: `1883`)
+- `MQTT_TOPICS` (comma-separated, default: `homeassistant/state/+/+,homeassistant/event/+`)
+- `PLATFORM_API_URL` (default: `http://publisher:8080/platform/ingest` in docker)
+- `AUDIT_DB_PATH` (default: `./audit/audit.db`)
+- `CONSENT_STORE_PATH` (optional file path for persisted consents)
+
+## Home Assistant -> MQTT Example Topics and Payloads
+
+### Topic 1: temperature state
+
+- Topic: `homeassistant/state/sensor/temperature`
+- Payload:
+
+```json
+{
+  "entity_id": "sensor.living_room_temperature",
+  "state": "24.1",
+  "attributes": {"unit_of_measurement": "C"},
+  "ts": "2026-02-28T10:00:00Z",
+  "source": "home_assistant"
+}
+```
+
+### Topic 2: power state
+
+- Topic: `homeassistant/state/sensor/power`
+- Payload:
+
+```json
+{
+  "entity_id": "sensor.main_power",
+  "state": "520",
+  "attributes": {"unit_of_measurement": "W"},
+  "ts": "2026-02-28T10:00:10Z",
+  "source": "home_assistant"
+}
+```
+
+### Topic 3: person_detected event
+
+- Topic: `homeassistant/event/person_detected`
+- Payload:
+
+```json
+{
+  "event_type": "person_detected",
+  "data": {"camera_id": "front_door", "confidence": 0.93},
+  "ts": "2026-02-28T10:00:20Z",
+  "source": "edge_inference"
+}
+```
+
+## API
+
+- `GET /health`
+- `GET /consents`
+- `POST /consents`
+- `DELETE /consents/{vc_id}`
+- `POST /simulate/publish` (HTTP-based injection without MQTT)
+- `GET /audit/logs` (debug helper)
+- `POST /platform/ingest` (dummy platform endpoint)
+
+## Policy Rules (Phase 1)
+
+A message is allowed only when:
+
+1. Consent exists with matching `dataset_id`
+2. `purpose` is in `allowed_purposes`
+3. current time in `[valid_from, valid_to]`
+
+If denied, no platform send occurs and audit action is `deny`.
+
+## Audit Log
+
+SQLite table `audit_log` columns:
+
+- `id`
+- `ts`
+- `action` (`allow`, `deny`, `send_error`)
+- `subject_did`
+- `dataset_id`
+- `purpose`
+- `reason`
+- `message_hash` (SHA-256)
+- `raw_topic`
+
+## Test
+
+```bash
+uv run pytest -q
+```
+
+Covers:
+- policy decision
+- normalization mapping
+- audit repository persistence
+
+## Extension Points
+
+- Signature verification: replace `policy.verifier.verify_signature()`
+- DID resolution: add a DID resolver module and connect it to policy check
+- External platform integration: set `PLATFORM_API_URL` to real endpoint
+- DB backend swap: add PostgreSQL repository implementing audit store interface
+- PEP hook for Phase 3: insert VC presentation check before `process_message`
+
+## Notes
+
+- This is a research prototype for rapid validation.
+- JSON-LD VC is not implemented yet, but Consent VC keys are designed to migrate.
+
+## Troubleshooting (Beginner)
+
+- `port is already allocated`:
+  - another process uses `1883` or `8080`
+  - stop it or change ports in `infra/docker-compose.yml`
+- `curl: (7) Failed to connect`:
+  - publisher is not ready yet
+  - check `docker ps` and retry in a few seconds
+- always `denied`:
+  - consent missing, expired, wrong dataset, or wrong purpose
+  - verify `/consents` response and test purpose `research`
+- no MQTT processing:
+  - verify topic prefix is `homeassistant/state/...` or `homeassistant/event/...`
+  - verify JSON payload format
+
+## Mini Glossary
+
+- `Consent VC`: user consent record for what data can be shared and for which purpose
+- `dataset_id`: normalized logical data category (for policy matching)
+- `purpose`: reason of sharing (example: `research`)
+- `PEP`: policy enforcement point (planned in Phase 3)
