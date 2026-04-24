@@ -214,6 +214,15 @@ If you want a ready-made Phase 2 path, see `examples/README.md` and the website 
 - environment/disaster event sharing
 - webcam event sharing
 
+For workshop exercise versions with problem programs and reference solutions, see:
+- `examples/hands_on/README.md`
+- `examples/hands_on/huskylens2_mock/`
+- `examples/hands_on/webcam_littering_mock/`
+- `examples/hands_on/mobile_viewer/`
+- `examples/hands_on/phase1_ha_ssi_publisher/`
+- `examples/hands_on/phase2_environment_disaster/`
+- `examples/hands_on/phase2_webcam_event_sharing/`
+
 ## Directory Structure
 
 - `publisher/` : FastAPI-based Data Publisher
