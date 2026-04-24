@@ -1,7 +1,7 @@
 version: "3"
 services:
   ipfs:
-    image: ipfs/go-ipfs:latest
+    image: ipfs/kubo:latest
     container_name: ipfs_node
     ports:
       - "4001:4001"   # libp2p

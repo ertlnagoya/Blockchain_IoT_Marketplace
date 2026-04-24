@@ -1,0 +1,72 @@
+site_name: IoTxWeb3 Intelligence Platform (IW3IP) Docs
+site_description: Workshop and hands-on documentation for IoTxWeb3 Intelligence Platform (IW3IP)
+site_url: https://<YOUR_GITHUB_USERNAME>.github.io/<YOUR_REPOSITORY_NAME>/
+repo_name: IoTxWeb3 Intelligence Platform (IW3IP)
+repo_url: https://github.com/ertlnagoya/Blockchain_IoT_Marketplace
+exclude_docs: README.md
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      languages:
+        - locale: ja
+          default: true
+          name: 日本語
+          build: true
+          nav_translations:
+            Home: ホーム
+            Workshop: ワークショップ
+            Overview: 概要
+            Prerequisites: 事前準備
+            Quickstart: 最短起動
+            Facilitator Guide: 講師進行ガイド
+            Hands-on: ハンズオン
+            HuskyLens2 Sample: HUSKYLENS2サンプル
+            USB Webcam Sample: USBウェブカメラサンプル
+            Mobile Viewer: スマホ閲覧アプリ
+            Operations: 運用
+            Troubleshooting: トラブルシュート
+            FAQ: FAQ
+        - locale: en
+          name: English
+          build: true
+  - search
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Workshop:
+      - Overview: workshop/index.md
+      - Prerequisites: workshop/prerequisites.md
+      - Quickstart: workshop/quickstart.md
+      - Facilitator Guide: workshop/facilitator-guide.md
+  - Hands-on:
+      - Overview: hands-on/index.md
+      - HuskyLens2 Sample: hands-on/huskylens2.md
+      - USB Webcam Sample: hands-on/webcam.md
+      - Mobile Viewer: hands-on/mobile-viewer.md
+  - Operations:
+      - Overview: operations/index.md
+      - Troubleshooting: operations/troubleshooting.md
+      - FAQ: operations/faq.md
