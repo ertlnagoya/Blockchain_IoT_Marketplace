@@ -7,9 +7,18 @@ COPY publisher ./publisher
 COPY schemas ./schemas
 COPY policy ./policy
 COPY audit ./audit
+COPY examples ./examples
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir fastapi uvicorn pydantic pydantic-settings httpx paho-mqtt
+    pip install --no-cache-dir \
+        fastapi \
+        uvicorn \
+        'pydantic>=2' \
+        pydantic-settings \
+        'httpx>=0.28' \
+        paho-mqtt \
+        'cryptography>=42' \
+        python-multipart
 
 EXPOSE 8080
 

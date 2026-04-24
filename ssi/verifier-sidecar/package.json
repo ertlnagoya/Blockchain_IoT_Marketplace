@@ -1,0 +1,19 @@
+{
+  "name": "iw3ip-verifier-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OID4VP presentation verification sidecar using @sphereon/pex and SD-JWT VC.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@sphereon/pex": "^5.0.0",
+    "express": "^4.21.0",
+    "jose": "^5.9.6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
