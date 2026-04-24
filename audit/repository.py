@@ -6,6 +6,13 @@ from pathlib import Path
 from audit.models import AuditLogRecord
 
 
+PHASE2_COLUMNS = [
+    ("holder_did", "TEXT"),
+    ("vc_hash", "TEXT"),
+    ("presentation_verified", "TEXT"),
+]
+
+
 class SQLiteAuditRepository:
     def __init__(self, db_path: str) -> None:
         self._db_path = Path(db_path)
@@ -34,6 +41,10 @@ class SQLiteAuditRepository:
                 )
                 """
             )
+            existing = {row["name"] for row in conn.execute("PRAGMA table_info(audit_log)")}
+            for col, sqltype in PHASE2_COLUMNS:
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE audit_log ADD COLUMN {col} {sqltype}")
             conn.commit()
 
     def write(self, record: AuditLogRecord) -> None:
@@ -42,8 +53,9 @@ class SQLiteAuditRepository:
                 """
                 INSERT INTO audit_log (
                     ts, action, subject_did, dataset_id, purpose,
-                    reason, message_hash, raw_topic
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    reason, message_hash, raw_topic,
+                    holder_did, vc_hash, presentation_verified
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.ts,
@@ -54,6 +66,9 @@ class SQLiteAuditRepository:
                     record.reason,
                     record.message_hash,
                     record.raw_topic,
+                    record.holder_did,
+                    record.vc_hash,
+                    record.presentation_verified,
                 ),
             )
             conn.commit()
@@ -63,7 +78,8 @@ class SQLiteAuditRepository:
             rows = conn.execute(
                 """
                 SELECT id, ts, action, subject_did, dataset_id, purpose,
-                       reason, message_hash, raw_topic
+                       reason, message_hash, raw_topic,
+                       holder_did, vc_hash, presentation_verified
                 FROM audit_log
                 ORDER BY id DESC
                 LIMIT ?

@@ -13,3 +13,6 @@ class AuditLogRecord:
     reason: str
     message_hash: str
     raw_topic: str
+    holder_did: str | None = None
+    vc_hash: str | None = None
+    presentation_verified: str | None = None
