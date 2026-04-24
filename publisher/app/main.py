@@ -12,10 +12,17 @@ from publisher.app.models import SimulatePublishRequest
 from publisher.app.mqtt_subscriber import MQTTSubscriber
 from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
+from publisher.app.ssi import issuer_routes, verifier_routes
+from publisher.app.ssi.config import SSISettings
+from publisher.app.ssi.keys import IssuerKeyStore
+from publisher.app.ssi.pex_client import PEXSidecarClient
+from publisher.app.ssi.presentation_defs import PresentationDefinitionStore
+from publisher.app.ssi.state import SSIStateStore
 
 
 configure_logging()
 settings = Settings()
+ssi_settings = SSISettings()
 
 consent_store = ConsentStore(settings.consent_store_path)
 audit_repo = SQLiteAuditRepository(settings.audit_db_path)
@@ -40,6 +47,34 @@ mqtt_subscriber = MQTTSubscriber(
 
 app = FastAPI(title="IW3IP Data Publisher", version="0.1.0")
 app.state.ingested = []
+
+ssi_keys = IssuerKeyStore(ssi_settings.issuer_key_path)
+ssi_state = SSIStateStore(
+    offer_ttl=ssi_settings.offer_ttl_seconds,
+    response_ttl=ssi_settings.response_ttl_seconds,
+)
+ssi_definitions = PresentationDefinitionStore(ssi_settings.presentation_defs_dir)
+ssi_pex_client = PEXSidecarClient(ssi_settings.pex_sidecar_url)
+
+app.include_router(
+    issuer_routes.build_router(
+        issuer_routes.IssuerDeps(
+            settings=ssi_settings, keys=ssi_keys, state=ssi_state
+        )
+    )
+)
+app.include_router(
+    verifier_routes.build_router(
+        verifier_routes.VerifierDeps(
+            settings=ssi_settings,
+            keys=ssi_keys,
+            state=ssi_state,
+            definitions=ssi_definitions,
+            audit_repo=audit_repo,
+            pex_client=ssi_pex_client,
+        )
+    )
+)
 
 
 @app.on_event("startup")
