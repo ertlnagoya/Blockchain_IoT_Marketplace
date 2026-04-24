@@ -23,10 +23,25 @@ services:
       PUBLISHER_ID: publisher-001
       AUDIT_DB_PATH: /data/audit.db
       CONSENT_STORE_PATH: /data/consents.json
+      SSI_ISSUER_BASE_URL: http://publisher:8080
+      SSI_ISSUER_KEY_PATH: /data/issuer_key.jwk.json
+      SSI_PEX_SIDECAR_URL: http://verifier-sidecar:7000
+      SSI_PRESENTATION_DEFS_DIR: /app/examples/ssi_wallet
     ports:
       - "8080:8080"
     volumes:
       - publisher_data:/data
+
+  verifier-sidecar:
+    build:
+      context: ../ssi/verifier-sidecar
+      dockerfile: Dockerfile
+    container_name: iw3ip-verifier-sidecar
+    profiles: ["ssi-wallet"]
+    environment:
+      PORT: "7000"
+    ports:
+      - "7000:7000"
 
   nodered:
     image: nodered/node-red:latest

@@ -11,6 +11,8 @@ dependencies = [
   "pydantic-settings>=2.10.0",
   "httpx>=0.28.0",
   "paho-mqtt>=2.1.0",
+  "cryptography>=42",
+  "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]
