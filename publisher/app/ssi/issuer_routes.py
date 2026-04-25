@@ -61,7 +61,7 @@ def _credential_issuer_metadata(settings: SSISettings, keys: IssuerKeyStore) -> 
         "authorization_servers": [settings.issuer_base_url],
         "credential_configurations_supported": {
             CREDENTIAL_CONFIG_ID: {
-                "format": "vc+sd-jwt",
+                "format": "dc+sd-jwt",
                 "vct": VCT,
                 "scope": "ConsentVC",
                 "cryptographic_binding_methods_supported": ["jwk", "did:jwk"],
@@ -225,8 +225,10 @@ def build_router(deps: IssuerDeps) -> APIRouter:
 
         cfg_id = body.get("credential_configuration_id") or body.get("credential_identifier")
         fmt = body.get("format")
-        if not (cfg_id == CREDENTIAL_CONFIG_ID or fmt == "vc+sd-jwt"):
-            raise HTTPException(status_code=400, detail=f"only vc+sd-jwt supported (got format={fmt}, cfg_id={cfg_id})")
+        # Accept both the new (`dc+sd-jwt`) and legacy (`vc+sd-jwt`) SD-JWT VC media
+        # type names so wallets that pin to either draft revision can still issue.
+        if not (cfg_id == CREDENTIAL_CONFIG_ID or fmt in ("dc+sd-jwt", "vc+sd-jwt")):
+            raise HTTPException(status_code=400, detail=f"only sd-jwt vc supported (got format={fmt}, cfg_id={cfg_id})")
         if body.get("vct") and body["vct"] != VCT:
             raise HTTPException(status_code=400, detail=f"unknown vct: {body['vct']}")
 
@@ -267,6 +269,6 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             iat=now,
             exp=exp,
         )
-        return {"credential": vc.compact, "format": "vc+sd-jwt"}
+        return {"credential": vc.compact, "format": "dc+sd-jwt"}
 
     return router

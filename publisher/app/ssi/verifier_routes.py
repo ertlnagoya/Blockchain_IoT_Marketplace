@@ -224,7 +224,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             "credentials": [
                 {
                     "id": "consent_vc",
-                    "format": "vc+sd-jwt",
+                    "format": "dc+sd-jwt",
                     "meta": {"vct_values": ["https://iw3ip.example/credentials/ConsentVC/v1"]},
                     "claims": [
                         {"path": ["dataset_id"], "values": [req.dataset_id]},
