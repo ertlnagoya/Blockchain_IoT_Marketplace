@@ -41,6 +41,31 @@ def _vc_hash(vp_token: str) -> str:
     return "sha256:" + hashlib.sha256(compact.encode("utf-8")).hexdigest()
 
 
+# Mobile wallets must be able to fetch `request_uri` and POST to `response_uri`
+# from outside the Docker network, so any host that only resolves inside
+# Compose (the default `http://publisher:8080`, `http://localhost:...`,
+# `127.*`) is unusable. When the configured `issuer_base_url` falls into that
+# bucket, fall back to the scheme/host the inbound request actually used —
+# this is what the wallet (or whoever forwarded the deeplink) reached us on,
+# and is by definition reachable from there.
+_INTERNAL_HOST_PREFIXES = ("publisher", "localhost", "127.", "0.0.0.0")
+
+
+def _externally_reachable_base_url(request: Request, configured: str) -> str:
+    try:
+        parsed = urllib.parse.urlsplit(configured)
+    except ValueError:
+        parsed = None
+    host = (parsed.hostname or "") if parsed else ""
+    if host and not any(host == p.rstrip(".") or host.startswith(p) for p in _INTERNAL_HOST_PREFIXES):
+        return configured.rstrip("/")
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    scheme = forwarded_proto or request.url.scheme
+    host_header = forwarded_host or request.url.netloc
+    return f"{scheme}://{host_header}".rstrip("/")
+
+
 def _write_audit(
     audit_repo: SQLiteAuditRepository,
     *,
@@ -148,16 +173,17 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         pd_id, pd = match
         req = deps.state.create_verification_request(pd_id, dataset_id, purpose)
 
+        public_base = _externally_reachable_base_url(request, deps.settings.issuer_base_url)
         authz = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
             "client_id": deps.settings.issuer_base_url,
-            "response_uri": f"{deps.settings.issuer_base_url}/verifier/response",
+            "response_uri": f"{public_base}/verifier/response",
             "presentation_definition": pd,
             "nonce": req.nonce,
             "state": req.state,
         }
-        request_uri = f"{deps.settings.issuer_base_url}/verifier/request_object?state={req.state}"
+        request_uri = f"{public_base}/verifier/request_object?state={req.state}"
         deeplink = "openid4vp://?" + urllib.parse.urlencode(
             {
                 "client_id": authz["client_id"],
@@ -184,7 +210,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         return HTMLResponse(html)
 
     @router.get("/verifier/request_object")
-    def verifier_request_object(state: str = Query(...)):
+    def verifier_request_object(request: Request, state: str = Query(...)):
         from fastapi.responses import Response as _Response
         from publisher.app.ssi.sdjwt import _b64u, _es256_sign, _json_bytes
         from publisher.app.ssi.did_jwk import did_jwk_from_public_jwk
@@ -208,11 +234,12 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 }
             ]
         }
+        public_base = _externally_reachable_base_url(request, deps.settings.issuer_base_url)
         payload = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
             "client_id": deps.settings.issuer_base_url,
-            "response_uri": f"{deps.settings.issuer_base_url}/verifier/response",
+            "response_uri": f"{public_base}/verifier/response",
             "dcql_query": dcql,
             "nonce": req.nonce,
             "state": req.state,
