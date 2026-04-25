@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
         'httpx>=0.28' \
         paho-mqtt \
         'cryptography>=42' \
-        python-multipart
+        python-multipart \
+        'qrcode[pil]>=7'
 
 EXPOSE 8080
 
