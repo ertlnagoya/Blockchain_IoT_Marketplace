@@ -223,17 +223,25 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         if not offer:
             raise HTTPException(status_code=400, detail="no_offer_for_token")
 
-        if body.get("format") != "vc+sd-jwt":
-            raise HTTPException(status_code=400, detail="only vc+sd-jwt supported")
+        cfg_id = body.get("credential_configuration_id") or body.get("credential_identifier")
+        fmt = body.get("format")
+        if not (cfg_id == CREDENTIAL_CONFIG_ID or fmt == "vc+sd-jwt"):
+            raise HTTPException(status_code=400, detail=f"only vc+sd-jwt supported (got format={fmt}, cfg_id={cfg_id})")
         if body.get("vct") and body["vct"] != VCT:
             raise HTTPException(status_code=400, detail=f"unknown vct: {body['vct']}")
 
         proof = body.get("proof") or {}
-        if proof.get("proof_type") != "jwt" or "jwt" not in proof:
+        proofs = body.get("proofs") or {}
+        proof_jwt = None
+        if isinstance(proof, dict) and proof.get("proof_type") == "jwt" and "jwt" in proof:
+            proof_jwt = proof["jwt"]
+        elif isinstance(proofs, dict) and isinstance(proofs.get("jwt"), list) and proofs["jwt"]:
+            proof_jwt = proofs["jwt"][0]
+        if not proof_jwt:
             raise HTTPException(status_code=400, detail="proof_type=jwt required")
 
         holder_jwk = _parse_proof_jwt(
-            proof["jwt"],
+            proof_jwt,
             expected_nonce=token.c_nonce,
             expected_aud=deps.settings.issuer_base_url,
         )

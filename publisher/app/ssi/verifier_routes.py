@@ -157,10 +157,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             "nonce": req.nonce,
             "state": req.state,
         }
+        request_uri = f"{deps.settings.issuer_base_url}/verifier/request_object?state={req.state}"
         deeplink = "openid4vp://?" + urllib.parse.urlencode(
             {
                 "client_id": authz["client_id"],
-                "request": json.dumps(authz, separators=(",", ":")),
+                "request_uri": request_uri,
             }
         )
 
@@ -181,6 +182,49 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             payload_json=json.dumps(authz, indent=2, ensure_ascii=False),
         )
         return HTMLResponse(html)
+
+    @router.get("/verifier/request_object")
+    def verifier_request_object(state: str = Query(...)):
+        from fastapi.responses import Response as _Response
+        from publisher.app.ssi.sdjwt import _b64u, _es256_sign, _json_bytes
+        from publisher.app.ssi.did_jwk import did_jwk_from_public_jwk
+        req = deps.state.find_verification_request(state)
+        if not req:
+            raise HTTPException(status_code=404, detail="verification_request_not_found")
+        pd = deps.definitions.get(req.presentation_definition_id)
+        kid = did_jwk_from_public_jwk(deps.keys.public_jwk) + "#0"
+        header = {"alg": "ES256", "typ": "oauth-authz-req+jwt", "kid": kid}
+        dcql = {
+            "credentials": [
+                {
+                    "id": "consent_vc",
+                    "format": "vc+sd-jwt",
+                    "meta": {"vct_values": ["https://iw3ip.example/credentials/ConsentVC/v1"]},
+                    "claims": [
+                        {"path": ["dataset_id"], "values": [req.dataset_id]},
+                        {"path": ["allowed_purposes"]},
+                        {"path": ["subject_id"]},
+                    ],
+                }
+            ]
+        }
+        payload = {
+            "response_type": "vp_token",
+            "response_mode": "direct_post",
+            "client_id": deps.settings.issuer_base_url,
+            "response_uri": f"{deps.settings.issuer_base_url}/verifier/response",
+            "dcql_query": dcql,
+            "nonce": req.nonce,
+            "state": req.state,
+            "iss": deps.settings.issuer_base_url,
+            "aud": "https://self-issued.me/v2",
+        }
+        h_b64 = _b64u(_json_bytes(header))
+        p_b64 = _b64u(_json_bytes(payload))
+        signing_input = (h_b64 + "." + p_b64).encode("ascii")
+        sig = _es256_sign(deps.keys.private_jwk, signing_input)
+        jwt = h_b64 + "." + p_b64 + "." + _b64u(sig)
+        return _Response(content=jwt, media_type="application/oauth-authz-req+jwt")
 
     @router.post("/verifier/response")
     def verifier_response(

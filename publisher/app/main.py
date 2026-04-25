@@ -48,6 +48,26 @@ mqtt_subscriber = MQTTSubscriber(
 app = FastAPI(title="IW3IP Data Publisher", version="0.1.0")
 app.state.ingested = []
 
+import logging
+from starlette.requests import Request as _StarletteRequest
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+_ssi_error_log = logging.getLogger("ssi.error")
+
+
+@app.exception_handler(HTTPException)
+async def _log_http_exception(request: _StarletteRequest, exc: HTTPException):
+    if exc.status_code >= 400:
+        _ssi_error_log.error("HTTP %s on %s %s: %s", exc.status_code, request.method, request.url.path, exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(RequestValidationError)
+async def _log_validation_exception(request: _StarletteRequest, exc: RequestValidationError):
+    _ssi_error_log.error("422 on %s %s: %s", request.method, request.url.path, exc.errors())
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
 ssi_keys = IssuerKeyStore(ssi_settings.issuer_key_path)
 ssi_state = SSIStateStore(
     offer_ttl=ssi_settings.offer_ttl_seconds,
