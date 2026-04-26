@@ -17,8 +17,25 @@ from publisher.app.ssi.state import SSIStateStore
 from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
-CREDENTIAL_CONFIG_ID = "ConsentVC"
-VCT = "https://iw3ip.example/credentials/ConsentVC/v1"
+CONSENT_VC_CONFIG_ID = "ConsentVC"
+CONSENT_VCT = "https://iw3ip.example/credentials/ConsentVC/v1"
+VIEWER_VC_CONFIG_ID = "ViewerVC"
+VIEWER_VCT = "https://iw3ip.example/credentials/ViewerVC/v1"
+
+# Backwards-compatible aliases for code/tests that imported the originals.
+CREDENTIAL_CONFIG_ID = CONSENT_VC_CONFIG_ID
+VCT = CONSENT_VCT
+
+# Stage 3: write-side VC (ConsentVC) vs read-side VC (ViewerVC).
+VC_KIND_TO_VCT = {
+    "ConsentVC": CONSENT_VCT,
+    "ViewerVC": VIEWER_VCT,
+}
+VC_KIND_TO_CONFIG_ID = {
+    "ConsentVC": CONSENT_VC_CONFIG_ID,
+    "ViewerVC": VIEWER_VC_CONFIG_ID,
+}
+
 DEEPLINK_SCHEME = "openid-credential-offer://"
 
 DEFAULT_ALLOWED_PURPOSES = {
@@ -41,10 +58,10 @@ def _issuer_did(keys: IssuerKeyStore) -> str:
     return did_jwk_from_public_jwk(keys.public_jwk)
 
 
-def _credential_offer(base_url: str, pre_auth_code: str) -> dict:
+def _credential_offer(base_url: str, pre_auth_code: str, config_id: str) -> dict:
     return {
         "credential_issuer": base_url,
-        "credential_configuration_ids": [CREDENTIAL_CONFIG_ID],
+        "credential_configuration_ids": [config_id],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": pre_auth_code,
@@ -55,21 +72,24 @@ def _credential_offer(base_url: str, pre_auth_code: str) -> dict:
 
 def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
     issuer_did = _issuer_did(keys)
+    common_alg = {
+        "format": "dc+sd-jwt",
+        "cryptographic_binding_methods_supported": ["jwk", "did:jwk"],
+        "credential_signing_alg_values_supported": ["ES256"],
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
+        },
+    }
     return {
         "credential_issuer": base_url,
         "token_endpoint": f"{base_url}/issuer/token",
         "credential_endpoint": f"{base_url}/issuer/credential",
         "authorization_servers": [base_url],
         "credential_configurations_supported": {
-            CREDENTIAL_CONFIG_ID: {
-                "format": "dc+sd-jwt",
-                "vct": VCT,
+            CONSENT_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": CONSENT_VCT,
                 "scope": "ConsentVC",
-                "cryptographic_binding_methods_supported": ["jwk", "did:jwk"],
-                "credential_signing_alg_values_supported": ["ES256"],
-                "proof_types_supported": {
-                    "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
-                },
                 "display": [
                     {"name": "IW3IP Consent Credential", "locale": "en"},
                     {"name": "IW3IP 同意クレデンシャル", "locale": "ja"},
@@ -77,13 +97,26 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                 "claims": {
                     "dataset_id": {"display": [{"name": "Dataset ID"}]},
                     "purpose": {"display": [{"name": "Purpose"}]},
-                    "subject_id": {
-                        "display": [{"name": "Subject"}],
-                        "mandatory": False,
-                    },
+                    "allowed_purposes": {"display": [{"name": "Allowed purposes"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
                     "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
                 },
-            }
+            },
+            VIEWER_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": VIEWER_VCT,
+                "scope": "ViewerVC",
+                "display": [
+                    {"name": "IW3IP Viewer Credential", "locale": "en"},
+                    {"name": "IW3IP 閲覧クレデンシャル", "locale": "ja"},
+                ],
+                "claims": {
+                    "dataset_id": {"display": [{"name": "Dataset ID"}]},
+                    "allowed_actions": {"display": [{"name": "Allowed actions"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
+                },
+            },
         },
         "issuer": issuer_did,
         "jwks": {"keys": [keys.public_jwk]},
@@ -150,20 +183,33 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         request: Request,
         type: str = Query("ConsentVC", alias="type"),
         dataset_id: str = Query(...),
-        purpose: str = Query(...),
+        purpose: str = Query("read"),
     ):
-        if type != "ConsentVC":
-            raise HTTPException(status_code=400, detail="only ConsentVC is supported")
+        if type not in VC_KIND_TO_CONFIG_ID:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown VC type: {type} (supported: {list(VC_KIND_TO_CONFIG_ID)})",
+            )
+        config_id = VC_KIND_TO_CONFIG_ID[type]
 
-        allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id, [purpose])
+        if type == "ConsentVC":
+            allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id, [purpose])
+            page_title = "IW3IP Consent VC を発行"
+        else:
+            # ViewerVC: purpose is fixed to "read" semantically; we reuse the
+            # allowed_purposes slot to carry allowed_actions=["read"].
+            allowed = ["read"]
+            page_title = "IW3IP Viewer VC を発行"
+
         offer = deps.state.create_offer(
-            credential_config_id=CREDENTIAL_CONFIG_ID,
+            credential_config_id=config_id,
             dataset_id=dataset_id,
             purpose=purpose,
             allowed_purposes=allowed,
+            vc_kind=type,
         )
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
-        co = _credential_offer(public_base, offer.pre_authorized_code)
+        co = _credential_offer(public_base, offer.pre_authorized_code, config_id)
         deeplink = (
             DEEPLINK_SCHEME
             + "?credential_offer="
@@ -180,11 +226,12 @@ def build_router(deps: IssuerDeps) -> APIRouter:
                     "dataset_id": dataset_id,
                     "purpose": purpose,
                     "allowed_purposes": allowed,
+                    "vc_kind": type,
                 }
             )
 
         html = render_qr_page(
-            title="IW3IP Consent VC を発行",
+            title=page_title,
             subtitle=f"dataset_id={dataset_id} / purpose={purpose}",
             deeplink=deeplink,
             deeplink_label="ウォレットで開く",
@@ -229,11 +276,13 @@ def build_router(deps: IssuerDeps) -> APIRouter:
 
         cfg_id = body.get("credential_configuration_id") or body.get("credential_identifier")
         fmt = body.get("format")
+        offer_vct = VC_KIND_TO_VCT[offer.vc_kind]
+        offer_cfg_id = VC_KIND_TO_CONFIG_ID[offer.vc_kind]
         # Accept both the new (`dc+sd-jwt`) and legacy (`vc+sd-jwt`) SD-JWT VC media
         # type names so wallets that pin to either draft revision can still issue.
-        if not (cfg_id == CREDENTIAL_CONFIG_ID or fmt in ("dc+sd-jwt", "vc+sd-jwt")):
+        if not (cfg_id == offer_cfg_id or fmt in ("dc+sd-jwt", "vc+sd-jwt")):
             raise HTTPException(status_code=400, detail=f"only sd-jwt vc supported (got format={fmt}, cfg_id={cfg_id})")
-        if body.get("vct") and body["vct"] != VCT:
+        if body.get("vct") and body["vct"] != offer_vct:
             raise HTTPException(status_code=400, detail=f"unknown vct: {body['vct']}")
 
         proof = body.get("proof") or {}
@@ -261,15 +310,24 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         issuer_did = _issuer_did(deps.keys)
         holder_did = did_jwk_from_public_jwk(holder_jwk)
 
-        vc = issue_sd_jwt_vc(
-            issuer_private_jwk=deps.keys.private_jwk,
-            issuer_did=issuer_did,
-            vct=VCT,
-            plain_claims={
+        if offer.vc_kind == "ViewerVC":
+            plain_claims = {
+                "dataset_id": offer.dataset_id,
+                "allowed_actions": offer.allowed_purposes,
+                "iw3ip_issuer": deps.settings.issuer_id,
+            }
+        else:
+            plain_claims = {
                 "dataset_id": offer.dataset_id,
                 "allowed_purposes": offer.allowed_purposes,
                 "iw3ip_issuer": deps.settings.issuer_id,
-            },
+            }
+
+        vc = issue_sd_jwt_vc(
+            issuer_private_jwk=deps.keys.private_jwk,
+            issuer_did=issuer_did,
+            vct=offer_vct,
+            plain_claims=plain_claims,
             sd_claims={
                 "subject_id": holder_did,
             },

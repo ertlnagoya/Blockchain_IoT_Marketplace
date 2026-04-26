@@ -19,11 +19,23 @@ class PresentationDefinitionStore:
             return []
         return sorted(p.stem for p in self._dir.glob("*.json"))
 
-    def find_for_dataset(self, dataset_id: str) -> tuple[str, dict] | None:
+    def find_for_dataset(
+        self,
+        dataset_id: str,
+        vc_kind: str = "ConsentVC",
+    ) -> tuple[str, dict] | None:
+        """Pick the PD matching dataset_id and vc_kind.
+
+        PD JSON may include `iw3ip_vc_kind` (defaults to ConsentVC) so the same
+        dataset can have separate PDs for write (ConsentVC) and read (ViewerVC).
+        """
         for pd_id in self.list_ids():
             pd = self.get(pd_id)
             if not pd:
                 continue
-            if pd.get("iw3ip_dataset_id") == dataset_id:
-                return pd_id, pd
+            if pd.get("iw3ip_dataset_id") != dataset_id:
+                continue
+            if pd.get("iw3ip_vc_kind", "ConsentVC") != vc_kind:
+                continue
+            return pd_id, pd
         return None

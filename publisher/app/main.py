@@ -197,6 +197,55 @@ def platform_ingest(
     return {"status": "received", "count": len(app.state.ingested)}
 
 
-@app.get("/platform/ingest")
-def platform_ingest_list() -> list[dict]:
-    return app.state.ingested
+@app.get("/platform/data")
+def platform_data(
+    dataset_id: str,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Read ingested rows for a dataset, gated by ViewerToken (Stage 3)."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="missing_authorization_header")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="invalid_authorization_header")
+    vt, reason = ssi_state.use_viewer_token(token, dataset_id=dataset_id)
+    if not vt:
+        audit_repo.write(
+            AuditLogRecord(
+                ts=datetime.now(timezone.utc).isoformat(),
+                action="deny",
+                subject_did="unknown",
+                dataset_id=dataset_id,
+                purpose="read",
+                reason=f"viewer_token_{reason}",
+                message_hash="",
+                raw_topic="platform/data",
+                holder_did=None,
+                vc_hash=None,
+                presentation_verified="deny",
+            )
+        )
+        status = 401 if reason in ("unknown", "expired") else 403
+        raise HTTPException(status_code=status, detail=f"viewer_token_{reason}")
+    rows = [r for r in app.state.ingested if r.get("dataset_id") == dataset_id]
+    audit_repo.write(
+        AuditLogRecord(
+            ts=datetime.now(timezone.utc).isoformat(),
+            action="allow",
+            subject_did=vt.holder_did or "unknown",
+            dataset_id=vt.dataset_id,
+            purpose="read",
+            reason=f"viewer_token_used:{vt.jti}:{vt.read_count}",
+            message_hash="",
+            raw_topic="platform/data",
+            holder_did=vt.holder_did,
+            vc_hash=None,
+            presentation_verified="allow",
+        )
+    )
+    return {
+        "dataset_id": vt.dataset_id,
+        "count": len(rows),
+        "read_count": vt.read_count,
+        "rows": rows,
+    }

@@ -102,6 +102,7 @@ def _local_pex_fallback(
     issuer_public_jwk: dict,
     dataset_id: str,
     purpose: str,
+    vc_kind: str = "ConsentVC",
 ) -> dict:
     """Fallback verification when the Node sidecar is unreachable.
 
@@ -141,9 +142,14 @@ def _local_pex_fallback(
     # enforce request-time purpose/dataset
     if claims.get("dataset_id") != dataset_id:
         return {"verified": False, "reason": "dataset_mismatch", "claims": claims, "holder_did": None}
-    allowed = claims.get("allowed_purposes", [])
-    if purpose not in allowed:
-        return {"verified": False, "reason": "purpose_mismatch", "claims": claims, "holder_did": None}
+    if vc_kind == "ViewerVC":
+        actions = claims.get("allowed_actions", [])
+        if "read" not in actions:
+            return {"verified": False, "reason": "action_not_allowed", "claims": claims, "holder_did": None}
+    else:
+        allowed = claims.get("allowed_purposes", [])
+        if purpose not in allowed:
+            return {"verified": False, "reason": "purpose_mismatch", "claims": claims, "holder_did": None}
     cnf = claims.get("cnf", {}).get("jwk")
     holder_did = None
     if cnf:
@@ -156,7 +162,8 @@ def _local_pex_fallback(
 def _safe_local_pex_fallback(pd, sd_jwt, deps, req):
     try:
         return _local_pex_fallback(
-            pd, sd_jwt, deps.keys.public_jwk, req.dataset_id, req.purpose
+            pd, sd_jwt, deps.keys.public_jwk, req.dataset_id, req.purpose,
+            vc_kind=getattr(req, "vc_kind", "ConsentVC"),
         )
     except Exception as fb_exc:  # noqa: BLE001
         return {"verified": False, "reason": f"verify_error:{fb_exc}", "claims": {}, "holder_did": None}
@@ -176,13 +183,16 @@ def build_router(deps: VerifierDeps) -> APIRouter:
     def verifier_request(
         request: Request,
         dataset_id: str = Query(...),
-        purpose: str = Query(...),
+        purpose: str = Query("read"),
+        vc_kind: str = Query("ConsentVC"),
     ):
-        match = deps.definitions.find_for_dataset(dataset_id)
+        if vc_kind not in ("ConsentVC", "ViewerVC"):
+            raise HTTPException(status_code=400, detail=f"unknown vc_kind: {vc_kind}")
+        match = deps.definitions.find_for_dataset(dataset_id, vc_kind=vc_kind)
         if not match:
             raise HTTPException(status_code=404, detail="no_presentation_definition_for_dataset")
         pd_id, pd = match
-        req = deps.state.create_verification_request(pd_id, dataset_id, purpose)
+        req = deps.state.create_verification_request(pd_id, dataset_id, purpose, vc_kind=vc_kind)
 
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         authz = {
@@ -211,8 +221,9 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 "nonce": req.nonce,
             })
 
+        title = "IW3IP Viewer VC を提示" if vc_kind == "ViewerVC" else "IW3IP Consent VC を提示"
         html = render_qr_page(
-            title="IW3IP Consent VC を提示",
+            title=title,
             subtitle=f"dataset_id={dataset_id} / purpose={purpose}",
             deeplink=deeplink,
             deeplink_label="ウォレットで開く",
@@ -231,20 +242,36 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         pd = deps.definitions.get(req.presentation_definition_id)
         kid = did_jwk_from_public_jwk(deps.keys.public_jwk) + "#0"
         header = {"alg": "ES256", "typ": "oauth-authz-req+jwt", "kid": kid}
-        dcql = {
-            "credentials": [
-                {
-                    "id": "consent_vc",
-                    "format": "dc+sd-jwt",
-                    "meta": {"vct_values": ["https://iw3ip.example/credentials/ConsentVC/v1"]},
-                    "claims": [
-                        {"path": ["dataset_id"], "values": [req.dataset_id]},
-                        {"path": ["allowed_purposes"]},
-                        {"path": ["subject_id"]},
-                    ],
-                }
-            ]
-        }
+        if req.vc_kind == "ViewerVC":
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "viewer_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/ViewerVC/v1"]},
+                        "claims": [
+                            {"path": ["dataset_id"], "values": [req.dataset_id]},
+                            {"path": ["allowed_actions"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
+        else:
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "consent_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/ConsentVC/v1"]},
+                        "claims": [
+                            {"path": ["dataset_id"], "values": [req.dataset_id]},
+                            {"path": ["allowed_purposes"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         payload = {
             "response_type": "vp_token",
@@ -307,12 +334,17 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         reason = result.get("reason") or ("ok" if verified else "verification_failed")
         holder_did = result.get("holder_did")
 
-        # Phase 2 purpose check (belt-and-braces against PEX)
+        # Phase 2/3 belt-and-braces purpose/action check after PEX
         claims = result.get("claims") or {}
         if verified:
             if claims.get("dataset_id") not in (None, req.dataset_id):
                 verified = False
                 reason = "dataset_mismatch"
+            elif req.vc_kind == "ViewerVC":
+                actions = claims.get("allowed_actions")
+                if actions is not None and "read" not in actions:
+                    verified = False
+                    reason = "action_not_allowed"
             else:
                 allowed = claims.get("allowed_purposes")
                 if allowed is not None and req.purpose not in allowed:
@@ -333,14 +365,38 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             verified="allow" if verified else "deny",
         )
         if verified:
+            if req.vc_kind == "ViewerVC":
+                vt = deps.state.create_viewer_token(
+                    dataset_id=req.dataset_id,
+                    holder_did=holder_did,
+                )
+                logger.info(
+                    "viewer_token_issued jti=%s token=%s dataset=%s ttl=%ss",
+                    vt.jti, vt.token, vt.dataset_id,
+                    int(vt.expires_at - vt.issued_at),
+                )
+                return {
+                    "status": "allowed",
+                    "dataset_id": req.dataset_id,
+                    "vc_kind": "ViewerVC",
+                    "viewer_token": vt.token,
+                    "viewer_token_jti": vt.jti,
+                    "expires_in": int(vt.expires_at - vt.issued_at),
+                }
             pt = deps.state.create_policy_token(
                 dataset_id=req.dataset_id,
                 purpose=req.purpose,
                 holder_did=holder_did,
             )
+            logger.info(
+                "policy_token_issued jti=%s token=%s dataset=%s ttl=%ss",
+                pt.jti, pt.token, pt.dataset_id,
+                int(pt.expires_at - pt.issued_at),
+            )
             return {
                 "status": "allowed",
                 "dataset_id": req.dataset_id,
+                "vc_kind": "ConsentVC",
                 "policy_token": pt.token,
                 "policy_token_jti": pt.jti,
                 "expires_in": int(pt.expires_at - pt.issued_at),
