@@ -42,6 +42,32 @@ def _vc_hash(vp_token: str) -> str:
     return "sha256:" + hashlib.sha256(compact.encode("utf-8")).hexdigest()
 
 
+def _extract_sd_jwt_compact(raw_vp_token: str) -> str:
+    """Pull the SD-JWT VC compact string out of whatever shape `vp_token` arrives in.
+
+    PEX/SIOPv2 responses send `vp_token` as a single SD-JWT VC compact string.
+    DCQL responses send it as a JSON object keyed by the credential query id
+    (e.g. `{"consent_vc": "<sd-jwt>"}`) or by an array of strings. Newer wallets
+    may also send a JSON array. Accept all three shapes.
+    """
+    s = (raw_vp_token or "").strip()
+    if not s or s[0] not in "{[":
+        return raw_vp_token
+    try:
+        data = json.loads(s)
+    except json.JSONDecodeError:
+        return raw_vp_token
+    if isinstance(data, dict):
+        for v in data.values():
+            if isinstance(v, str) and v:
+                return v
+            if isinstance(v, list) and v and isinstance(v[0], str):
+                return v[0]
+    if isinstance(data, list) and data and isinstance(data[0], str):
+        return data[0]
+    return raw_vp_token
+
+
 def _write_audit(
     audit_repo: SQLiteAuditRepository,
     *,
@@ -125,6 +151,15 @@ def _local_pex_fallback(
 
         holder_did = did_jwk_from_public_jwk(cnf)
     return {"verified": True, "reason": "ok", "claims": claims, "holder_did": holder_did}
+
+
+def _safe_local_pex_fallback(pd, sd_jwt, deps, req):
+    try:
+        return _local_pex_fallback(
+            pd, sd_jwt, deps.keys.public_jwk, req.dataset_id, req.purpose
+        )
+    except Exception as fb_exc:  # noqa: BLE001
+        return {"verified": False, "reason": f"verify_error:{fb_exc}", "claims": {}, "holder_did": None}
 
 
 def build_router(deps: VerifierDeps) -> APIRouter:
@@ -232,8 +267,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
     @router.post("/verifier/response")
     def verifier_response(
         vp_token: str = Form(...),
-        presentation_submission: str = Form(...),
         state: str = Form(...),
+        # Only sent for PEX (presentation_definition) responses. DCQL responses
+        # have no equivalent — the wallet keys `vp_token` by credential query id
+        # instead. Keep the field optional so both shapes are accepted.
+        presentation_submission: str | None = Form(default=None),
     ):
         req = deps.state.find_verification_request(state)
         if not req:
@@ -243,26 +281,27 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         if not pd:
             raise HTTPException(status_code=500, detail="presentation_definition_missing")
 
-        submission = json.loads(presentation_submission)
-        vc_hash_value = _vc_hash(vp_token)
+        sd_jwt = _extract_sd_jwt_compact(vp_token)
+        vc_hash_value = _vc_hash(sd_jwt)
 
-        try:
-            result = deps.pex_client.verify(
-                presentation_definition=pd,
-                vp_token=vp_token,
-                presentation_submission=submission,
-                issuer_public_jwk=deps.keys.public_jwk,
-                expected_nonce=req.nonce,
-                expected_aud=deps.settings.issuer_base_url,
-            )
-        except (httpx.HTTPError, httpx.InvalidURL) as exc:
-            logger.warning("PEX sidecar unreachable (%s); using local fallback", exc)
+        if presentation_submission is not None:
+            submission = json.loads(presentation_submission)
             try:
-                result = _local_pex_fallback(
-                    pd, vp_token, deps.keys.public_jwk, req.dataset_id, req.purpose
+                result = deps.pex_client.verify(
+                    presentation_definition=pd,
+                    vp_token=sd_jwt,
+                    presentation_submission=submission,
+                    issuer_public_jwk=deps.keys.public_jwk,
+                    expected_nonce=req.nonce,
+                    expected_aud=deps.settings.issuer_base_url,
                 )
-            except Exception as fb_exc:  # noqa: BLE001
-                result = {"verified": False, "reason": f"verify_error:{fb_exc}", "claims": {}, "holder_did": None}
+            except (httpx.HTTPError, httpx.InvalidURL) as exc:
+                logger.warning("PEX sidecar unreachable (%s); using local fallback", exc)
+                result = _safe_local_pex_fallback(pd, sd_jwt, deps, req)
+        else:
+            # DCQL path: PEX sidecar speaks PEX, not DCQL, so go straight to the
+            # local fallback that re-checks the disclosed claims directly.
+            result = _safe_local_pex_fallback(pd, sd_jwt, deps, req)
 
         verified = bool(result.get("verified"))
         reason = result.get("reason") or ("ok" if verified else "verification_failed")
