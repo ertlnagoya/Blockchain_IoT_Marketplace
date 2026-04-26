@@ -333,7 +333,18 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             verified="allow" if verified else "deny",
         )
         if verified:
-            return {"status": "allowed", "dataset_id": req.dataset_id}
+            pt = deps.state.create_policy_token(
+                dataset_id=req.dataset_id,
+                purpose=req.purpose,
+                holder_did=holder_did,
+            )
+            return {
+                "status": "allowed",
+                "dataset_id": req.dataset_id,
+                "policy_token": pt.token,
+                "policy_token_jti": pt.jti,
+                "expires_in": int(pt.expires_at - pt.issued_at),
+            }
         return {"status": "denied", "dataset_id": req.dataset_id, "reason": reason}
 
     @router.get("/verifier/status")
