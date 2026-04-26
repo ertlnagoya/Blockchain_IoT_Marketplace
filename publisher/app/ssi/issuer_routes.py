@@ -21,19 +21,25 @@ CONSENT_VC_CONFIG_ID = "ConsentVC"
 CONSENT_VCT = "https://iw3ip.example/credentials/ConsentVC/v1"
 VIEWER_VC_CONFIG_ID = "ViewerVC"
 VIEWER_VCT = "https://iw3ip.example/credentials/ViewerVC/v1"
+SERVICE_VC_CONFIG_ID = "ServiceVC"
+SERVICE_VCT = "https://iw3ip.example/credentials/ServiceVC/v1"
 
 # Backwards-compatible aliases for code/tests that imported the originals.
 CREDENTIAL_CONFIG_ID = CONSENT_VC_CONFIG_ID
 VCT = CONSENT_VCT
 
-# Stage 3: write-side VC (ConsentVC) vs read-side VC (ViewerVC).
+# ConsentVC = single-use write authz (Stage 1)
+# ViewerVC  = multi-use read authz   (Stage 3)
+# ServiceVC = multi-use write authz  (Stage 4 prep, M2M)
 VC_KIND_TO_VCT = {
     "ConsentVC": CONSENT_VCT,
     "ViewerVC": VIEWER_VCT,
+    "ServiceVC": SERVICE_VCT,
 }
 VC_KIND_TO_CONFIG_ID = {
     "ConsentVC": CONSENT_VC_CONFIG_ID,
     "ViewerVC": VIEWER_VC_CONFIG_ID,
+    "ServiceVC": SERVICE_VC_CONFIG_ID,
 }
 
 DEEPLINK_SCHEME = "openid-credential-offer://"
@@ -109,6 +115,21 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                 "display": [
                     {"name": "IW3IP Viewer Credential", "locale": "en"},
                     {"name": "IW3IP 閲覧クレデンシャル", "locale": "ja"},
+                ],
+                "claims": {
+                    "dataset_id": {"display": [{"name": "Dataset ID"}]},
+                    "allowed_actions": {"display": [{"name": "Allowed actions"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
+                },
+            },
+            SERVICE_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": SERVICE_VCT,
+                "scope": "ServiceVC",
+                "display": [
+                    {"name": "IW3IP Service Credential", "locale": "en"},
+                    {"name": "IW3IP サービスクレデンシャル", "locale": "ja"},
                 ],
                 "claims": {
                     "dataset_id": {"display": [{"name": "Dataset ID"}]},
@@ -195,11 +216,12 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         if type == "ConsentVC":
             allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id, [purpose])
             page_title = "IW3IP Consent VC を発行"
-        else:
-            # ViewerVC: purpose is fixed to "read" semantically; we reuse the
-            # allowed_purposes slot to carry allowed_actions=["read"].
+        elif type == "ViewerVC":
             allowed = ["read"]
             page_title = "IW3IP Viewer VC を発行"
+        else:  # ServiceVC: M2M write authz
+            allowed = ["write_continuous"]
+            page_title = "IW3IP Service VC を発行"
 
         offer = deps.state.create_offer(
             credential_config_id=config_id,
@@ -310,7 +332,7 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         issuer_did = _issuer_did(deps.keys)
         holder_did = did_jwk_from_public_jwk(holder_jwk)
 
-        if offer.vc_kind == "ViewerVC":
+        if offer.vc_kind in ("ViewerVC", "ServiceVC"):
             plain_claims = {
                 "dataset_id": offer.dataset_id,
                 "allowed_actions": offer.allowed_purposes,

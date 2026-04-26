@@ -146,6 +146,10 @@ def _local_pex_fallback(
         actions = claims.get("allowed_actions", [])
         if "read" not in actions:
             return {"verified": False, "reason": "action_not_allowed", "claims": claims, "holder_did": None}
+    elif vc_kind == "ServiceVC":
+        actions = claims.get("allowed_actions", [])
+        if "write_continuous" not in actions:
+            return {"verified": False, "reason": "action_not_allowed", "claims": claims, "holder_did": None}
     else:
         allowed = claims.get("allowed_purposes", [])
         if purpose not in allowed:
@@ -186,7 +190,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         purpose: str = Query("read"),
         vc_kind: str = Query("ConsentVC"),
     ):
-        if vc_kind not in ("ConsentVC", "ViewerVC"):
+        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC"):
             raise HTTPException(status_code=400, detail=f"unknown vc_kind: {vc_kind}")
         match = deps.definitions.find_for_dataset(dataset_id, vc_kind=vc_kind)
         if not match:
@@ -221,7 +225,10 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 "nonce": req.nonce,
             })
 
-        title = "IW3IP Viewer VC を提示" if vc_kind == "ViewerVC" else "IW3IP Consent VC を提示"
+        title = {
+            "ViewerVC": "IW3IP Viewer VC を提示",
+            "ServiceVC": "IW3IP Service VC を提示",
+        }.get(vc_kind, "IW3IP Consent VC を提示")
         html = render_qr_page(
             title=title,
             subtitle=f"dataset_id={dataset_id} / purpose={purpose}",
@@ -249,6 +256,21 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                         "id": "viewer_vc",
                         "format": "dc+sd-jwt",
                         "meta": {"vct_values": ["https://iw3ip.example/credentials/ViewerVC/v1"]},
+                        "claims": [
+                            {"path": ["dataset_id"], "values": [req.dataset_id]},
+                            {"path": ["allowed_actions"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
+        elif req.vc_kind == "ServiceVC":
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "service_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/ServiceVC/v1"]},
                         "claims": [
                             {"path": ["dataset_id"], "values": [req.dataset_id]},
                             {"path": ["allowed_actions"]},
@@ -345,6 +367,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 if actions is not None and "read" not in actions:
                     verified = False
                     reason = "action_not_allowed"
+            elif req.vc_kind == "ServiceVC":
+                actions = claims.get("allowed_actions")
+                if actions is not None and "write_continuous" not in actions:
+                    verified = False
+                    reason = "action_not_allowed"
             else:
                 allowed = claims.get("allowed_purposes")
                 if allowed is not None and req.purpose not in allowed:
@@ -382,6 +409,24 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     "viewer_token": vt.token,
                     "viewer_token_jti": vt.jti,
                     "expires_in": int(vt.expires_at - vt.issued_at),
+                }
+            if req.vc_kind == "ServiceVC":
+                st = deps.state.create_service_token(
+                    dataset_id=req.dataset_id,
+                    holder_did=holder_did,
+                )
+                logger.info(
+                    "service_token_issued jti=%s token=%s dataset=%s ttl=%ss",
+                    st.jti, st.token, st.dataset_id,
+                    int(st.expires_at - st.issued_at),
+                )
+                return {
+                    "status": "allowed",
+                    "dataset_id": req.dataset_id,
+                    "vc_kind": "ServiceVC",
+                    "service_token": st.token,
+                    "service_token_jti": st.jti,
+                    "expires_in": int(st.expires_at - st.issued_at),
                 }
             pt = deps.state.create_policy_token(
                 dataset_id=req.dataset_id,
