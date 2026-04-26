@@ -21,6 +21,7 @@ from publisher.app.ssi.pex_client import PEXSidecarClient
 from publisher.app.ssi.presentation_defs import PresentationDefinitionStore
 from publisher.app.ssi.sdjwt import parse_sd_jwt_vc, verify_sd_jwt_vc
 from publisher.app.ssi.state import SSIStateStore
+from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
 logger = logging.getLogger(__name__)
@@ -39,31 +40,6 @@ class VerifierDeps:
 def _vc_hash(vp_token: str) -> str:
     compact = vp_token.split("~")[0]
     return "sha256:" + hashlib.sha256(compact.encode("utf-8")).hexdigest()
-
-
-# Mobile wallets must be able to fetch `request_uri` and POST to `response_uri`
-# from outside the Docker network, so any host that only resolves inside
-# Compose (the default `http://publisher:8080`, `http://localhost:...`,
-# `127.*`) is unusable. When the configured `issuer_base_url` falls into that
-# bucket, fall back to the scheme/host the inbound request actually used —
-# this is what the wallet (or whoever forwarded the deeplink) reached us on,
-# and is by definition reachable from there.
-_INTERNAL_HOST_PREFIXES = ("publisher", "localhost", "127.", "0.0.0.0")
-
-
-def _externally_reachable_base_url(request: Request, configured: str) -> str:
-    try:
-        parsed = urllib.parse.urlsplit(configured)
-    except ValueError:
-        parsed = None
-    host = (parsed.hostname or "") if parsed else ""
-    if host and not any(host == p.rstrip(".") or host.startswith(p) for p in _INTERNAL_HOST_PREFIXES):
-        return configured.rstrip("/")
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    scheme = forwarded_proto or request.url.scheme
-    host_header = forwarded_host or request.url.netloc
-    return f"{scheme}://{host_header}".rstrip("/")
 
 
 def _write_audit(
@@ -173,7 +149,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         pd_id, pd = match
         req = deps.state.create_verification_request(pd_id, dataset_id, purpose)
 
-        public_base = _externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         authz = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
@@ -234,7 +210,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 }
             ]
         }
-        public_base = _externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         payload = {
             "response_type": "vp_token",
             "response_mode": "direct_post",

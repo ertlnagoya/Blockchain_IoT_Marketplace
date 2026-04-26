@@ -14,6 +14,7 @@ from publisher.app.ssi.html import render_qr_page
 from publisher.app.ssi.keys import IssuerKeyStore
 from publisher.app.ssi.sdjwt import issue_sd_jwt_vc
 from publisher.app.ssi.state import SSIStateStore
+from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
 CREDENTIAL_CONFIG_ID = "ConsentVC"
@@ -40,9 +41,9 @@ def _issuer_did(keys: IssuerKeyStore) -> str:
     return did_jwk_from_public_jwk(keys.public_jwk)
 
 
-def _credential_offer(settings: SSISettings, pre_auth_code: str) -> dict:
+def _credential_offer(base_url: str, pre_auth_code: str) -> dict:
     return {
-        "credential_issuer": settings.issuer_base_url,
+        "credential_issuer": base_url,
         "credential_configuration_ids": [CREDENTIAL_CONFIG_ID],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
@@ -52,13 +53,13 @@ def _credential_offer(settings: SSISettings, pre_auth_code: str) -> dict:
     }
 
 
-def _credential_issuer_metadata(settings: SSISettings, keys: IssuerKeyStore) -> dict:
+def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
     issuer_did = _issuer_did(keys)
     return {
-        "credential_issuer": settings.issuer_base_url,
-        "token_endpoint": f"{settings.issuer_base_url}/issuer/token",
-        "credential_endpoint": f"{settings.issuer_base_url}/issuer/credential",
-        "authorization_servers": [settings.issuer_base_url],
+        "credential_issuer": base_url,
+        "token_endpoint": f"{base_url}/issuer/token",
+        "credential_endpoint": f"{base_url}/issuer/credential",
+        "authorization_servers": [base_url],
         "credential_configurations_supported": {
             CREDENTIAL_CONFIG_ID: {
                 "format": "dc+sd-jwt",
@@ -127,12 +128,13 @@ def build_router(deps: IssuerDeps) -> APIRouter:
     router = APIRouter()
 
     @router.get("/.well-known/openid-credential-issuer")
-    def issuer_metadata() -> dict:
-        return _credential_issuer_metadata(deps.settings, deps.keys)
+    def issuer_metadata(request: Request) -> dict:
+        base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        return _credential_issuer_metadata(base, deps.keys)
 
     @router.get("/.well-known/oauth-authorization-server")
-    def as_metadata() -> dict:
-        base = deps.settings.issuer_base_url
+    def as_metadata(request: Request) -> dict:
+        base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         return {
             "issuer": base,
             "token_endpoint": f"{base}/issuer/token",
@@ -160,7 +162,8 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             purpose=purpose,
             allowed_purposes=allowed,
         )
-        co = _credential_offer(deps.settings, offer.pre_authorized_code)
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        co = _credential_offer(public_base, offer.pre_authorized_code)
         deeplink = (
             DEEPLINK_SCHEME
             + "?credential_offer="
@@ -210,6 +213,7 @@ def build_router(deps: IssuerDeps) -> APIRouter:
 
     @router.post("/issuer/credential")
     def issuer_credential(
+        request: Request,
         body: dict,
         authorization: str | None = Header(default=None),
     ):
@@ -242,10 +246,14 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         if not proof_jwt:
             raise HTTPException(status_code=400, detail="proof_type=jwt required")
 
+        # Wallets sign the proof JWT with whatever issuer URL they fetched the
+        # offer/metadata under. That's the externally-reachable URL we just
+        # echoed back, not the docker-internal `settings.issuer_base_url`.
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         holder_jwk = _parse_proof_jwt(
             proof_jwt,
             expected_nonce=token.c_nonce,
-            expected_aud=deps.settings.issuer_base_url,
+            expected_aud=public_base,
         )
 
         now = int(time.time())
