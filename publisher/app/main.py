@@ -159,8 +159,24 @@ def platform_ingest(
         dataset_id = body.get("dataset_id")
         if not dataset_id:
             raise HTTPException(status_code=400, detail="dataset_id_required")
-        pt, reason = ssi_state.consume_policy_token(token, dataset_id=dataset_id)
-        if not pt:
+        # Try PolicyToken first (single-use, Stage 1).
+        # Fall through to ServiceToken (multi-use, M2M) if not recognized.
+        pt, p_reason = ssi_state.consume_policy_token(token, dataset_id=dataset_id)
+        st = None
+        s_reason = None
+        if not pt and p_reason == "unknown":
+            st, s_reason = ssi_state.use_service_token(token, dataset_id=dataset_id)
+        if not pt and not st:
+            # Prefer the more informative error: if ServiceToken matched but
+            # had a non-trivial issue (expired/dataset_mismatch), surface that;
+            # otherwise default to the PolicyToken error space (which Stage 1
+            # users expect and which is also right for "really unknown token").
+            if s_reason and s_reason != "unknown":
+                reason = s_reason
+                kind = "service"
+            else:
+                reason = p_reason
+                kind = "policy"
             audit_repo.write(
                 AuditLogRecord(
                     ts=datetime.now(timezone.utc).isoformat(),
@@ -168,7 +184,7 @@ def platform_ingest(
                     subject_did="unknown",
                     dataset_id=str(dataset_id),
                     purpose=str(body.get("purpose") or "unknown"),
-                    reason=f"policy_token_{reason}",
+                    reason=f"{kind}_token_{reason}",
                     message_hash="",
                     raw_topic="platform/ingest",
                     holder_did=None,
@@ -177,22 +193,39 @@ def platform_ingest(
                 )
             )
             status = 401 if reason in ("unknown", "expired") else 403
-            raise HTTPException(status_code=status, detail=f"policy_token_{reason}")
-        audit_repo.write(
-            AuditLogRecord(
-                ts=datetime.now(timezone.utc).isoformat(),
-                action="allow",
-                subject_did=pt.holder_did or "unknown",
-                dataset_id=pt.dataset_id,
-                purpose=pt.purpose,
-                reason=f"policy_token_consumed:{pt.jti}",
-                message_hash="",
-                raw_topic="platform/ingest",
-                holder_did=pt.holder_did,
-                vc_hash=None,
-                presentation_verified="allow",
+            raise HTTPException(status_code=status, detail=f"{kind}_token_{reason}")
+        if pt:
+            audit_repo.write(
+                AuditLogRecord(
+                    ts=datetime.now(timezone.utc).isoformat(),
+                    action="allow",
+                    subject_did=pt.holder_did or "unknown",
+                    dataset_id=pt.dataset_id,
+                    purpose=pt.purpose,
+                    reason=f"policy_token_consumed:{pt.jti}",
+                    message_hash="",
+                    raw_topic="platform/ingest",
+                    holder_did=pt.holder_did,
+                    vc_hash=None,
+                    presentation_verified="allow",
+                )
             )
-        )
+        else:
+            audit_repo.write(
+                AuditLogRecord(
+                    ts=datetime.now(timezone.utc).isoformat(),
+                    action="allow",
+                    subject_did=st.holder_did or "unknown",
+                    dataset_id=st.dataset_id,
+                    purpose=str(body.get("purpose") or "write_continuous"),
+                    reason=f"service_token_used:{st.jti}:{st.write_count}",
+                    message_hash="",
+                    raw_topic="platform/ingest",
+                    holder_did=st.holder_did,
+                    vc_hash=None,
+                    presentation_verified="allow",
+                )
+            )
     app.state.ingested.append(body)
     return {"status": "received", "count": len(app.state.ingested)}
 

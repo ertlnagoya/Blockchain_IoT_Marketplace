@@ -74,6 +74,24 @@ class ViewerToken:
     read_count: int = 0
 
 
+@dataclass
+class ServiceToken:
+    """M2M write counterpart to PolicyToken (Stage 4 prep).
+
+    Long-lived (default 1 h) and multi-use, suited to a continuous
+    MQTT publisher that holds a ServiceVC and writes many events under
+    a single presentation. Each ingest under the token increments
+    `write_count`.
+    """
+    jti: str
+    token: str
+    dataset_id: str
+    holder_did: str | None
+    issued_at: float
+    expires_at: float
+    write_count: int = 0
+
+
 class SSIStateStore:
     def __init__(
         self,
@@ -81,6 +99,7 @@ class SSIStateStore:
         response_ttl: int = 600,
         policy_token_ttl: int = 300,
         viewer_token_ttl: int = 60,
+        service_token_ttl: int = 3600,
     ) -> None:
         self._lock = threading.Lock()
         self._offers: dict[str, Offer] = {}
@@ -88,10 +107,12 @@ class SSIStateStore:
         self._requests: dict[str, VerificationRequest] = {}
         self._policy_tokens: dict[str, PolicyToken] = {}
         self._viewer_tokens: dict[str, ViewerToken] = {}
+        self._service_tokens: dict[str, ServiceToken] = {}
         self._offer_ttl = offer_ttl
         self._response_ttl = response_ttl
         self._policy_token_ttl = policy_token_ttl
         self._viewer_token_ttl = viewer_token_ttl
+        self._service_token_ttl = service_token_ttl
 
     @property
     def policy_token_ttl(self) -> int:
@@ -100,6 +121,10 @@ class SSIStateStore:
     @property
     def viewer_token_ttl(self) -> int:
         return self._viewer_token_ttl
+
+    @property
+    def service_token_ttl(self) -> int:
+        return self._service_token_ttl
 
     # ---- OID4VCI ----
 
@@ -294,3 +319,49 @@ class SSIStateStore:
     def get_viewer_token(self, token: str) -> ViewerToken | None:
         with self._lock:
             return self._viewer_tokens.get(token)
+
+    # ---- ServiceToken (Stage 4 prep) ----
+
+    def create_service_token(
+        self,
+        *,
+        dataset_id: str,
+        holder_did: str | None,
+    ) -> ServiceToken:
+        now = time.time()
+        st = ServiceToken(
+            jti=secrets.token_hex(8),
+            token=secrets.token_urlsafe(32),
+            dataset_id=dataset_id,
+            holder_did=holder_did,
+            issued_at=now,
+            expires_at=now + self._service_token_ttl,
+        )
+        with self._lock:
+            self._service_tokens[st.token] = st
+        return st
+
+    def use_service_token(
+        self,
+        token: str,
+        *,
+        dataset_id: str,
+    ) -> tuple[ServiceToken | None, str]:
+        """Return (token, reason). Reason: ok, unknown, expired, dataset_mismatch.
+
+        Multi-use within TTL — every ingest call increments write_count.
+        """
+        with self._lock:
+            st = self._service_tokens.get(token)
+            if not st:
+                return None, "unknown"
+            if time.time() > st.expires_at:
+                return None, "expired"
+            if st.dataset_id != dataset_id:
+                return None, "dataset_mismatch"
+            st.write_count += 1
+            return st, "ok"
+
+    def get_service_token(self, token: str) -> ServiceToken | None:
+        with self._lock:
+            return self._service_tokens.get(token)
