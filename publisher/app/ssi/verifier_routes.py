@@ -370,6 +370,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     dataset_id=req.dataset_id,
                     holder_did=holder_did,
                 )
+                logger.info(
+                    "viewer_token_issued jti=%s token=%s dataset=%s ttl=%ss",
+                    vt.jti, vt.token, vt.dataset_id,
+                    int(vt.expires_at - vt.issued_at),
+                )
                 return {
                     "status": "allowed",
                     "dataset_id": req.dataset_id,
@@ -382,6 +387,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 dataset_id=req.dataset_id,
                 purpose=req.purpose,
                 holder_did=holder_did,
+            )
+            logger.info(
+                "policy_token_issued jti=%s token=%s dataset=%s ttl=%ss",
+                pt.jti, pt.token, pt.dataset_id,
+                int(pt.expires_at - pt.issued_at),
             )
             return {
                 "status": "allowed",
