@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timezone
 
+from fastapi import FastAPI, Header, HTTPException
+
+from audit.models import AuditLogRecord
 from audit.repository import SQLiteAuditRepository
 from policy.engine import PolicyEngine
 from policy.models import ConsentVC
@@ -142,7 +145,54 @@ def list_audit_logs(limit: int = 100) -> list[dict]:
 
 
 @app.post("/platform/ingest")
-def platform_ingest(body: dict) -> dict:
+def platform_ingest(
+    body: dict,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    # Bearer header is the wallet/PolicyToken path. No header = legacy
+    # Phase 2 consent_store path (see /consents JSON), kept for the existing
+    # webcam-event-sharing / environment-disaster hands-on flows.
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            raise HTTPException(status_code=401, detail="invalid_authorization_header")
+        dataset_id = body.get("dataset_id")
+        if not dataset_id:
+            raise HTTPException(status_code=400, detail="dataset_id_required")
+        pt, reason = ssi_state.consume_policy_token(token, dataset_id=dataset_id)
+        if not pt:
+            audit_repo.write(
+                AuditLogRecord(
+                    ts=datetime.now(timezone.utc).isoformat(),
+                    action="deny",
+                    subject_did="unknown",
+                    dataset_id=str(dataset_id),
+                    purpose=str(body.get("purpose") or "unknown"),
+                    reason=f"policy_token_{reason}",
+                    message_hash="",
+                    raw_topic="platform/ingest",
+                    holder_did=None,
+                    vc_hash=None,
+                    presentation_verified="deny",
+                )
+            )
+            status = 401 if reason in ("unknown", "expired") else 403
+            raise HTTPException(status_code=status, detail=f"policy_token_{reason}")
+        audit_repo.write(
+            AuditLogRecord(
+                ts=datetime.now(timezone.utc).isoformat(),
+                action="allow",
+                subject_did=pt.holder_did or "unknown",
+                dataset_id=pt.dataset_id,
+                purpose=pt.purpose,
+                reason=f"policy_token_consumed:{pt.jti}",
+                message_hash="",
+                raw_topic="platform/ingest",
+                holder_did=pt.holder_did,
+                vc_hash=None,
+                presentation_verified="allow",
+            )
+        )
     app.state.ingested.append(body)
     return {"status": "received", "count": len(app.state.ingested)}
 

@@ -43,14 +43,37 @@ class VerificationRequest:
     result: dict | None = None
 
 
+@dataclass
+class PolicyToken:
+    jti: str
+    token: str
+    dataset_id: str
+    purpose: str
+    holder_did: str | None
+    issued_at: float
+    expires_at: float
+    consumed_at: float | None = None
+
+
 class SSIStateStore:
-    def __init__(self, offer_ttl: int = 600, response_ttl: int = 600) -> None:
+    def __init__(
+        self,
+        offer_ttl: int = 600,
+        response_ttl: int = 600,
+        policy_token_ttl: int = 300,
+    ) -> None:
         self._lock = threading.Lock()
         self._offers: dict[str, Offer] = {}
         self._tokens: dict[str, AccessToken] = {}
         self._requests: dict[str, VerificationRequest] = {}
+        self._policy_tokens: dict[str, PolicyToken] = {}
         self._offer_ttl = offer_ttl
         self._response_ttl = response_ttl
+        self._policy_token_ttl = policy_token_ttl
+
+    @property
+    def policy_token_ttl(self) -> int:
+        return self._policy_token_ttl
 
     # ---- OID4VCI ----
 
@@ -143,3 +166,55 @@ class SSIStateStore:
             req = self._requests.get(state)
             if req:
                 req.result = result
+
+    # ---- PolicyToken ----
+    # TODO: in-memory only; will not survive across publisher replicas.
+    # Move to a shared cache (Redis) or signed JWT before scaling out.
+
+    def create_policy_token(
+        self,
+        *,
+        dataset_id: str,
+        purpose: str,
+        holder_did: str | None,
+    ) -> PolicyToken:
+        now = time.time()
+        pt = PolicyToken(
+            jti=secrets.token_hex(8),
+            token=secrets.token_urlsafe(32),
+            dataset_id=dataset_id,
+            purpose=purpose,
+            holder_did=holder_did,
+            issued_at=now,
+            expires_at=now + self._policy_token_ttl,
+        )
+        with self._lock:
+            self._policy_tokens[pt.token] = pt
+        return pt
+
+    def consume_policy_token(
+        self,
+        token: str,
+        *,
+        dataset_id: str,
+    ) -> tuple[PolicyToken | None, str]:
+        """Return (token, reason). On success reason="ok"; otherwise a short code.
+
+        Reasons: unknown, expired, already_consumed, dataset_mismatch.
+        """
+        with self._lock:
+            pt = self._policy_tokens.get(token)
+            if not pt:
+                return None, "unknown"
+            if time.time() > pt.expires_at:
+                return None, "expired"
+            if pt.consumed_at is not None:
+                return None, "already_consumed"
+            if pt.dataset_id != dataset_id:
+                return None, "dataset_mismatch"
+            pt.consumed_at = time.time()
+            return pt, "ok"
+
+    def get_policy_token(self, token: str) -> PolicyToken | None:
+        with self._lock:
+            return self._policy_tokens.get(token)
