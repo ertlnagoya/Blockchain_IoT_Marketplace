@@ -13,6 +13,7 @@ dependencies = [
   "paho-mqtt>=2.1.0",
   "cryptography>=42",
   "python-multipart>=0.0.9",
+  "qrcode[pil]>=7",
 ]
 
 [dependency-groups]

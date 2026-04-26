@@ -105,7 +105,7 @@ def issue_sd_jwt_vc(
     if sd_digests:
         body["_sd"] = sd_digests
 
-    header = {"alg": "ES256", "typ": "vc+sd-jwt", "kid": issuer_did + "#0"}
+    header = {"alg": "ES256", "typ": "dc+sd-jwt", "kid": issuer_did + "#0"}
     signing_input = _b64u(_json_bytes(header)).encode("ascii") + b"." + _b64u(_json_bytes(body)).encode("ascii")
     sig = _es256_sign(issuer_private_jwk, signing_input)
     jwt = signing_input.decode("ascii") + "." + _b64u(sig)

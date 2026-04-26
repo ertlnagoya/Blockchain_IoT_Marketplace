@@ -14,6 +14,7 @@ from publisher.app.ssi.html import render_qr_page
 from publisher.app.ssi.keys import IssuerKeyStore
 from publisher.app.ssi.sdjwt import issue_sd_jwt_vc
 from publisher.app.ssi.state import SSIStateStore
+from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
 CREDENTIAL_CONFIG_ID = "ConsentVC"
@@ -40,9 +41,9 @@ def _issuer_did(keys: IssuerKeyStore) -> str:
     return did_jwk_from_public_jwk(keys.public_jwk)
 
 
-def _credential_offer(settings: SSISettings, pre_auth_code: str) -> dict:
+def _credential_offer(base_url: str, pre_auth_code: str) -> dict:
     return {
-        "credential_issuer": settings.issuer_base_url,
+        "credential_issuer": base_url,
         "credential_configuration_ids": [CREDENTIAL_CONFIG_ID],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
@@ -52,16 +53,16 @@ def _credential_offer(settings: SSISettings, pre_auth_code: str) -> dict:
     }
 
 
-def _credential_issuer_metadata(settings: SSISettings, keys: IssuerKeyStore) -> dict:
+def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
     issuer_did = _issuer_did(keys)
     return {
-        "credential_issuer": settings.issuer_base_url,
-        "token_endpoint": f"{settings.issuer_base_url}/issuer/token",
-        "credential_endpoint": f"{settings.issuer_base_url}/issuer/credential",
-        "authorization_servers": [settings.issuer_base_url],
+        "credential_issuer": base_url,
+        "token_endpoint": f"{base_url}/issuer/token",
+        "credential_endpoint": f"{base_url}/issuer/credential",
+        "authorization_servers": [base_url],
         "credential_configurations_supported": {
             CREDENTIAL_CONFIG_ID: {
-                "format": "vc+sd-jwt",
+                "format": "dc+sd-jwt",
                 "vct": VCT,
                 "scope": "ConsentVC",
                 "cryptographic_binding_methods_supported": ["jwk", "did:jwk"],
@@ -127,12 +128,13 @@ def build_router(deps: IssuerDeps) -> APIRouter:
     router = APIRouter()
 
     @router.get("/.well-known/openid-credential-issuer")
-    def issuer_metadata() -> dict:
-        return _credential_issuer_metadata(deps.settings, deps.keys)
+    def issuer_metadata(request: Request) -> dict:
+        base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        return _credential_issuer_metadata(base, deps.keys)
 
     @router.get("/.well-known/oauth-authorization-server")
-    def as_metadata() -> dict:
-        base = deps.settings.issuer_base_url
+    def as_metadata(request: Request) -> dict:
+        base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         return {
             "issuer": base,
             "token_endpoint": f"{base}/issuer/token",
@@ -160,7 +162,8 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             purpose=purpose,
             allowed_purposes=allowed,
         )
-        co = _credential_offer(deps.settings, offer.pre_authorized_code)
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        co = _credential_offer(public_base, offer.pre_authorized_code)
         deeplink = (
             DEEPLINK_SCHEME
             + "?credential_offer="
@@ -210,6 +213,7 @@ def build_router(deps: IssuerDeps) -> APIRouter:
 
     @router.post("/issuer/credential")
     def issuer_credential(
+        request: Request,
         body: dict,
         authorization: str | None = Header(default=None),
     ):
@@ -223,19 +227,33 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         if not offer:
             raise HTTPException(status_code=400, detail="no_offer_for_token")
 
-        if body.get("format") != "vc+sd-jwt":
-            raise HTTPException(status_code=400, detail="only vc+sd-jwt supported")
+        cfg_id = body.get("credential_configuration_id") or body.get("credential_identifier")
+        fmt = body.get("format")
+        # Accept both the new (`dc+sd-jwt`) and legacy (`vc+sd-jwt`) SD-JWT VC media
+        # type names so wallets that pin to either draft revision can still issue.
+        if not (cfg_id == CREDENTIAL_CONFIG_ID or fmt in ("dc+sd-jwt", "vc+sd-jwt")):
+            raise HTTPException(status_code=400, detail=f"only sd-jwt vc supported (got format={fmt}, cfg_id={cfg_id})")
         if body.get("vct") and body["vct"] != VCT:
             raise HTTPException(status_code=400, detail=f"unknown vct: {body['vct']}")
 
         proof = body.get("proof") or {}
-        if proof.get("proof_type") != "jwt" or "jwt" not in proof:
+        proofs = body.get("proofs") or {}
+        proof_jwt = None
+        if isinstance(proof, dict) and proof.get("proof_type") == "jwt" and "jwt" in proof:
+            proof_jwt = proof["jwt"]
+        elif isinstance(proofs, dict) and isinstance(proofs.get("jwt"), list) and proofs["jwt"]:
+            proof_jwt = proofs["jwt"][0]
+        if not proof_jwt:
             raise HTTPException(status_code=400, detail="proof_type=jwt required")
 
+        # Wallets sign the proof JWT with whatever issuer URL they fetched the
+        # offer/metadata under. That's the externally-reachable URL we just
+        # echoed back, not the docker-internal `settings.issuer_base_url`.
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         holder_jwk = _parse_proof_jwt(
-            proof["jwt"],
+            proof_jwt,
             expected_nonce=token.c_nonce,
-            expected_aud=deps.settings.issuer_base_url,
+            expected_aud=public_base,
         )
 
         now = int(time.time())
@@ -259,6 +277,6 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             iat=now,
             exp=exp,
         )
-        return {"credential": vc.compact, "format": "vc+sd-jwt"}
+        return {"credential": vc.compact, "format": "dc+sd-jwt"}
 
     return router

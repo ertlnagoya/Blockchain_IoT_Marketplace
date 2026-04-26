@@ -21,6 +21,7 @@ from publisher.app.ssi.pex_client import PEXSidecarClient
 from publisher.app.ssi.presentation_defs import PresentationDefinitionStore
 from publisher.app.ssi.sdjwt import parse_sd_jwt_vc, verify_sd_jwt_vc
 from publisher.app.ssi.state import SSIStateStore
+from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,32 @@ class VerifierDeps:
 def _vc_hash(vp_token: str) -> str:
     compact = vp_token.split("~")[0]
     return "sha256:" + hashlib.sha256(compact.encode("utf-8")).hexdigest()
+
+
+def _extract_sd_jwt_compact(raw_vp_token: str) -> str:
+    """Pull the SD-JWT VC compact string out of whatever shape `vp_token` arrives in.
+
+    PEX/SIOPv2 responses send `vp_token` as a single SD-JWT VC compact string.
+    DCQL responses send it as a JSON object keyed by the credential query id
+    (e.g. `{"consent_vc": "<sd-jwt>"}`) or by an array of strings. Newer wallets
+    may also send a JSON array. Accept all three shapes.
+    """
+    s = (raw_vp_token or "").strip()
+    if not s or s[0] not in "{[":
+        return raw_vp_token
+    try:
+        data = json.loads(s)
+    except json.JSONDecodeError:
+        return raw_vp_token
+    if isinstance(data, dict):
+        for v in data.values():
+            if isinstance(v, str) and v:
+                return v
+            if isinstance(v, list) and v and isinstance(v[0], str):
+                return v[0]
+    if isinstance(data, list) and data and isinstance(data[0], str):
+        return data[0]
+    return raw_vp_token
 
 
 def _write_audit(
@@ -126,6 +153,15 @@ def _local_pex_fallback(
     return {"verified": True, "reason": "ok", "claims": claims, "holder_did": holder_did}
 
 
+def _safe_local_pex_fallback(pd, sd_jwt, deps, req):
+    try:
+        return _local_pex_fallback(
+            pd, sd_jwt, deps.keys.public_jwk, req.dataset_id, req.purpose
+        )
+    except Exception as fb_exc:  # noqa: BLE001
+        return {"verified": False, "reason": f"verify_error:{fb_exc}", "claims": {}, "holder_did": None}
+
+
 def build_router(deps: VerifierDeps) -> APIRouter:
     router = APIRouter()
 
@@ -148,19 +184,21 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         pd_id, pd = match
         req = deps.state.create_verification_request(pd_id, dataset_id, purpose)
 
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         authz = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
             "client_id": deps.settings.issuer_base_url,
-            "response_uri": f"{deps.settings.issuer_base_url}/verifier/response",
+            "response_uri": f"{public_base}/verifier/response",
             "presentation_definition": pd,
             "nonce": req.nonce,
             "state": req.state,
         }
+        request_uri = f"{public_base}/verifier/request_object?state={req.state}"
         deeplink = "openid4vp://?" + urllib.parse.urlencode(
             {
                 "client_id": authz["client_id"],
-                "request": json.dumps(authz, separators=(",", ":")),
+                "request_uri": request_uri,
             }
         )
 
@@ -182,11 +220,58 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         )
         return HTMLResponse(html)
 
+    @router.get("/verifier/request_object")
+    def verifier_request_object(request: Request, state: str = Query(...)):
+        from fastapi.responses import Response as _Response
+        from publisher.app.ssi.sdjwt import _b64u, _es256_sign, _json_bytes
+        from publisher.app.ssi.did_jwk import did_jwk_from_public_jwk
+        req = deps.state.find_verification_request(state)
+        if not req:
+            raise HTTPException(status_code=404, detail="verification_request_not_found")
+        pd = deps.definitions.get(req.presentation_definition_id)
+        kid = did_jwk_from_public_jwk(deps.keys.public_jwk) + "#0"
+        header = {"alg": "ES256", "typ": "oauth-authz-req+jwt", "kid": kid}
+        dcql = {
+            "credentials": [
+                {
+                    "id": "consent_vc",
+                    "format": "dc+sd-jwt",
+                    "meta": {"vct_values": ["https://iw3ip.example/credentials/ConsentVC/v1"]},
+                    "claims": [
+                        {"path": ["dataset_id"], "values": [req.dataset_id]},
+                        {"path": ["allowed_purposes"]},
+                        {"path": ["subject_id"]},
+                    ],
+                }
+            ]
+        }
+        public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        payload = {
+            "response_type": "vp_token",
+            "response_mode": "direct_post",
+            "client_id": deps.settings.issuer_base_url,
+            "response_uri": f"{public_base}/verifier/response",
+            "dcql_query": dcql,
+            "nonce": req.nonce,
+            "state": req.state,
+            "iss": deps.settings.issuer_base_url,
+            "aud": "https://self-issued.me/v2",
+        }
+        h_b64 = _b64u(_json_bytes(header))
+        p_b64 = _b64u(_json_bytes(payload))
+        signing_input = (h_b64 + "." + p_b64).encode("ascii")
+        sig = _es256_sign(deps.keys.private_jwk, signing_input)
+        jwt = h_b64 + "." + p_b64 + "." + _b64u(sig)
+        return _Response(content=jwt, media_type="application/oauth-authz-req+jwt")
+
     @router.post("/verifier/response")
     def verifier_response(
         vp_token: str = Form(...),
-        presentation_submission: str = Form(...),
         state: str = Form(...),
+        # Only sent for PEX (presentation_definition) responses. DCQL responses
+        # have no equivalent — the wallet keys `vp_token` by credential query id
+        # instead. Keep the field optional so both shapes are accepted.
+        presentation_submission: str | None = Form(default=None),
     ):
         req = deps.state.find_verification_request(state)
         if not req:
@@ -196,26 +281,27 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         if not pd:
             raise HTTPException(status_code=500, detail="presentation_definition_missing")
 
-        submission = json.loads(presentation_submission)
-        vc_hash_value = _vc_hash(vp_token)
+        sd_jwt = _extract_sd_jwt_compact(vp_token)
+        vc_hash_value = _vc_hash(sd_jwt)
 
-        try:
-            result = deps.pex_client.verify(
-                presentation_definition=pd,
-                vp_token=vp_token,
-                presentation_submission=submission,
-                issuer_public_jwk=deps.keys.public_jwk,
-                expected_nonce=req.nonce,
-                expected_aud=deps.settings.issuer_base_url,
-            )
-        except (httpx.HTTPError, httpx.InvalidURL) as exc:
-            logger.warning("PEX sidecar unreachable (%s); using local fallback", exc)
+        if presentation_submission is not None:
+            submission = json.loads(presentation_submission)
             try:
-                result = _local_pex_fallback(
-                    pd, vp_token, deps.keys.public_jwk, req.dataset_id, req.purpose
+                result = deps.pex_client.verify(
+                    presentation_definition=pd,
+                    vp_token=sd_jwt,
+                    presentation_submission=submission,
+                    issuer_public_jwk=deps.keys.public_jwk,
+                    expected_nonce=req.nonce,
+                    expected_aud=deps.settings.issuer_base_url,
                 )
-            except Exception as fb_exc:  # noqa: BLE001
-                result = {"verified": False, "reason": f"verify_error:{fb_exc}", "claims": {}, "holder_did": None}
+            except (httpx.HTTPError, httpx.InvalidURL) as exc:
+                logger.warning("PEX sidecar unreachable (%s); using local fallback", exc)
+                result = _safe_local_pex_fallback(pd, sd_jwt, deps, req)
+        else:
+            # DCQL path: PEX sidecar speaks PEX, not DCQL, so go straight to the
+            # local fallback that re-checks the disclosed claims directly.
+            result = _safe_local_pex_fallback(pd, sd_jwt, deps, req)
 
         verified = bool(result.get("verified"))
         reason = result.get("reason") or ("ok" if verified else "verification_failed")
