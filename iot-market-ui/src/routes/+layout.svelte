@@ -106,9 +106,21 @@
 	{/if}
 	<a
 		class="block border-y border-gray-700 py-2 pl-4 hover:cursor-pointer hover:text-purple-400"
-		href="/"
+		href="/my-data"
 	>
-		Purchase History
+		購入履歴 / データを見る
+	</a>
+	<a
+		class="block border-y border-gray-700 py-2 pl-4 hover:cursor-pointer hover:text-purple-400"
+		href="/seller"
+	>
+		出品する
+	</a>
+	<a
+		class="block border-y border-gray-700 py-2 pl-4 hover:cursor-pointer hover:text-purple-400"
+		href="/welcome"
+	>
+		はじめての方へ
 	</a>
 </div>
 <slot />

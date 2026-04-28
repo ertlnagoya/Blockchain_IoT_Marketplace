@@ -52,6 +52,27 @@
       offerUrl = body.offer_url;
       claimId = body.claim_id;
       status = 'ready';
+      // Persist purchase history so /my-data can list past purchases
+      // without contract round-trips. Idempotent on tx_hash.
+      try {
+        const raw = localStorage.getItem('iw3ip:purchase_history');
+        const list: any[] = raw ? JSON.parse(raw) : [];
+        if (!list.some((e) => e.txHash === txHash)) {
+          list.unshift({
+            txHash,
+            merchandise: merchandiseAddr,
+            dataset: datasetId,
+            buyer: buyerAddr,
+            purchasedAt: new Date().toISOString(),
+          });
+          localStorage.setItem(
+            'iw3ip:purchase_history',
+            JSON.stringify(list.slice(0, 50)),
+          );
+        }
+      } catch {
+        // ignore localStorage failures
+      }
     } catch (e) {
       errorMsg = (e as Error).message;
       status = 'error';
