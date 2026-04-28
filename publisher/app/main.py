@@ -282,3 +282,117 @@ def platform_data(
         "read_count": vt.read_count,
         "rows": rows,
     }
+
+
+# ---- Marketplace VC Bridge (v2 / M2) ----
+# The bridge service POSTs here when a Merchandise.Purchase event fires.
+# We record the (eth_addr, tx_hash, merchandise) context and return an
+# OID4VCI offer URL bound to that context. The actual PurchaseViewerVC
+# type (with merchandise/tx claims) lands in M3; for M2 we return an
+# offer that issues a regular ViewerVC scoped to the dataset.
+
+import json as _json
+import urllib.parse as _urllib
+from publisher.app.ssi.url_utils import externally_reachable_base_url
+from starlette.requests import Request as _Request
+
+
+@app.post("/marketplace/claim")
+def marketplace_claim(body: dict, request: _Request) -> dict:
+    required_fields = (
+        "merchandise_address",
+        "buyer_eth_addr",
+        "tx_hash",
+        "dataset_id",
+    )
+    for f in required_fields:
+        if not body.get(f):
+            raise HTTPException(status_code=400, detail=f"missing_field:{f}")
+
+    claim, created = ssi_state.create_marketplace_claim(
+        merchandise_address=body["merchandise_address"],
+        buyer_eth_addr=body["buyer_eth_addr"],
+        tx_hash=body["tx_hash"],
+        dataset_id=body["dataset_id"],
+        purchase_amount_wei=str(body.get("purchase_amount_wei", "0")),
+    )
+
+    # Stitch the claim's pre_authorized_code into a credential offer that
+    # the publisher's existing /issuer/* path knows how to redeem. M3 will
+    # extend offer creation to fold merchandise context into the issued
+    # PurchaseViewerVC; for now we register the claim's code as a regular
+    # ViewerVC offer for the dataset.
+    if created:
+        # Reserve an Offer entry so /issuer/token can find the
+        # pre_authorized_code we just minted.
+        ssi_state._offers[claim.pre_authorized_code] = (  # noqa: SLF001
+            __import__("publisher.app.ssi.state", fromlist=["Offer"]).Offer(
+                pre_authorized_code=claim.pre_authorized_code,
+                credential_config_id="ViewerVC",  # M3: switch to PurchaseViewerVC
+                dataset_id=claim.dataset_id,
+                purpose="read",
+                allowed_purposes=["read"],
+                created_at=claim.created_at,
+                vc_kind="ViewerVC",  # M3: PurchaseViewerVC
+            )
+        )
+        audit_repo.write(
+            AuditLogRecord(
+                ts=datetime.now(timezone.utc).isoformat(),
+                action="allow",
+                subject_did=f"eth:{claim.buyer_eth_addr}",
+                dataset_id=claim.dataset_id,
+                purpose="purchase",
+                reason=f"claim_received:{claim.claim_id}:tx={claim.tx_hash}",
+                message_hash="",
+                raw_topic="marketplace/claim",
+                holder_did=None,  # M3 fills this in once wallet completes
+                vc_hash=None,
+                presentation_verified="allow",
+            )
+        )
+
+    public_base = externally_reachable_base_url(request, ssi_settings.issuer_base_url)
+    co = {
+        "credential_issuer": public_base,
+        "credential_configuration_ids": ["ViewerVC"],
+        "grants": {
+            "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+                "pre-authorized_code": claim.pre_authorized_code,
+            }
+        },
+    }
+    deeplink = (
+        "openid-credential-offer://?credential_offer="
+        + _urllib.quote(_json.dumps(co, separators=(",", ":")))
+    )
+    offer_url = (
+        f"{public_base}/issuer/offer?type=ViewerVC"
+        f"&dataset_id={_urllib.quote(claim.dataset_id)}&purpose=read"
+        f"&claim_id={claim.claim_id}"
+    )
+    return {
+        "claim_id": claim.claim_id,
+        "offer_url": offer_url,
+        "deeplink": deeplink,
+        "merchandise_address": claim.merchandise_address,
+        "buyer_eth_addr": claim.buyer_eth_addr,
+        "tx_hash": claim.tx_hash,
+        "created": created,
+    }
+
+
+@app.get("/marketplace/claim/{claim_id}")
+def marketplace_claim_status(claim_id: str) -> dict:
+    c = ssi_state.get_marketplace_claim(claim_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="claim_not_found")
+    return {
+        "claim_id": c.claim_id,
+        "merchandise_address": c.merchandise_address,
+        "buyer_eth_addr": c.buyer_eth_addr,
+        "tx_hash": c.tx_hash,
+        "dataset_id": c.dataset_id,
+        "status": "delivered" if c.holder_did else "pending",
+        "holder_did": c.holder_did,
+    }
