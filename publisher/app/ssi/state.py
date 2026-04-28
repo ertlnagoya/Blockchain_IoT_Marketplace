@@ -75,6 +75,24 @@ class ViewerToken:
 
 
 @dataclass
+class MarketplaceClaim:
+    """Bridge-recorded purchase context that maps an Ethereum tx to an
+    OID4VCI offer (M2 / v2). M3 grafts the eth_addr <-> did:jwk binding
+    on top by recording the holder_did once the wallet completes
+    credential receipt.
+    """
+    claim_id: str
+    pre_authorized_code: str
+    merchandise_address: str
+    buyer_eth_addr: str
+    tx_hash: str
+    dataset_id: str
+    purchase_amount_wei: str
+    created_at: float
+    holder_did: str | None = None  # filled in M3 once wallet receives the VC
+
+
+@dataclass
 class ServiceToken:
     """M2M write counterpart to PolicyToken (Stage 4 prep).
 
@@ -108,6 +126,8 @@ class SSIStateStore:
         self._policy_tokens: dict[str, PolicyToken] = {}
         self._viewer_tokens: dict[str, ViewerToken] = {}
         self._service_tokens: dict[str, ServiceToken] = {}
+        self._marketplace_claims: dict[str, MarketplaceClaim] = {}
+        self._marketplace_claims_by_tx: dict[str, MarketplaceClaim] = {}
         self._offer_ttl = offer_ttl
         self._response_ttl = response_ttl
         self._policy_token_ttl = policy_token_ttl
@@ -365,3 +385,61 @@ class SSIStateStore:
     def get_service_token(self, token: str) -> ServiceToken | None:
         with self._lock:
             return self._service_tokens.get(token)
+
+    # ---- MarketplaceClaim (v2 / M2) ----
+    # Each Purchase event from the bridge becomes one MarketplaceClaim.
+    # Idempotent on tx_hash: replaying the same Purchase returns the
+    # existing claim instead of double-issuing.
+
+    def create_marketplace_claim(
+        self,
+        *,
+        merchandise_address: str,
+        buyer_eth_addr: str,
+        tx_hash: str,
+        dataset_id: str,
+        purchase_amount_wei: str,
+    ) -> tuple[MarketplaceClaim, bool]:
+        """Return (claim, created). created=False means we returned the
+        previously-recorded claim for this tx_hash (idempotent)."""
+        with self._lock:
+            existing = self._marketplace_claims_by_tx.get(tx_hash)
+            if existing:
+                return existing, False
+            claim = MarketplaceClaim(
+                claim_id=secrets.token_hex(8),
+                pre_authorized_code=secrets.token_urlsafe(24),
+                merchandise_address=merchandise_address,
+                buyer_eth_addr=buyer_eth_addr,
+                tx_hash=tx_hash,
+                dataset_id=dataset_id,
+                purchase_amount_wei=purchase_amount_wei,
+                created_at=time.time(),
+            )
+            self._marketplace_claims[claim.claim_id] = claim
+            self._marketplace_claims_by_tx[tx_hash] = claim
+        return claim, True
+
+    def get_marketplace_claim(self, claim_id: str) -> MarketplaceClaim | None:
+        with self._lock:
+            return self._marketplace_claims.get(claim_id)
+
+    def find_marketplace_claim_by_code(
+        self, pre_authorized_code: str
+    ) -> MarketplaceClaim | None:
+        with self._lock:
+            for c in self._marketplace_claims.values():
+                if c.pre_authorized_code == pre_authorized_code:
+                    return c
+            return None
+
+    def attach_holder_to_claim(
+        self, claim_id: str, holder_did: str
+    ) -> MarketplaceClaim | None:
+        """M3 hook: record eth_addr <-> did:jwk binding once a wallet
+        finishes credential receipt for the claim."""
+        with self._lock:
+            c = self._marketplace_claims.get(claim_id)
+            if c:
+                c.holder_did = holder_did
+            return c

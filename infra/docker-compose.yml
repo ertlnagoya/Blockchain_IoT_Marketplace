@@ -52,5 +52,23 @@ services:
     depends_on:
       - mosquitto
 
+  bridge:
+    build:
+      context: ../bridge
+      dockerfile: Dockerfile
+    container_name: iw3ip-mv-bridge
+    profiles: ["mv-bridge"]
+    depends_on:
+      - publisher
+    environment:
+      # Hardhat is expected to run on the host (`npx hardhat node`)
+      # so the existing iot-market workflow stays unchanged.
+      BRIDGE_HARDHAT_RPC: ${BRIDGE_HARDHAT_RPC:-http://host.docker.internal:8545}
+      BRIDGE_IOT_MARKET_ADDRESS: ${BRIDGE_IOT_MARKET_ADDRESS:-}
+      BRIDGE_PUBLISHER_URL: http://publisher:8080
+      BRIDGE_DATASET_DEFAULT: ${BRIDGE_DATASET_DEFAULT:-home/env/temperature}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   publisher_data:
