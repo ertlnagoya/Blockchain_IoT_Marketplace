@@ -23,6 +23,9 @@ class Offer:
     consumed: bool = False
     # Stage 3: distinguishes ConsentVC (write authz) from ViewerVC (read authz)
     vc_kind: str = "ConsentVC"
+    # Stage 7: SellerVC carries seller_id; licensed_datasets reuses
+    # allowed_purposes (it's just a string list slot anyway).
+    seller_id: str | None = None
 
 
 @dataclass
@@ -93,6 +96,23 @@ class MarketplaceClaim:
 
 
 @dataclass
+class SellerToken:
+    """Seller-identity token for marketplace registration (Stage 7).
+
+    Multi-use within TTL (a seller registers many merchandises with one
+    presentation); used only by /marketplace/register and gated by the
+    SellerVC's licensed_datasets list.
+    """
+    jti: str
+    token: str
+    seller_did: str | None
+    licensed_datasets: list[str]
+    issued_at: float
+    expires_at: float
+    register_count: int = 0
+
+
+@dataclass
 class ServiceToken:
     """M2M write counterpart to PolicyToken (Stage 4 prep).
 
@@ -118,6 +138,7 @@ class SSIStateStore:
         policy_token_ttl: int = 300,
         viewer_token_ttl: int = 60,
         service_token_ttl: int = 3600,
+        seller_token_ttl: int = 86400,
     ) -> None:
         self._lock = threading.Lock()
         self._offers: dict[str, Offer] = {}
@@ -126,6 +147,8 @@ class SSIStateStore:
         self._policy_tokens: dict[str, PolicyToken] = {}
         self._viewer_tokens: dict[str, ViewerToken] = {}
         self._service_tokens: dict[str, ServiceToken] = {}
+        self._seller_tokens: dict[str, SellerToken] = {}
+        self._merchandise_seller_did: dict[str, str] = {}  # Stage 7: merchandise -> seller_did
         self._marketplace_claims: dict[str, MarketplaceClaim] = {}
         self._marketplace_claims_by_tx: dict[str, MarketplaceClaim] = {}
         # M4: merchandise_address -> dataset_id, populated from claims so
@@ -137,6 +160,7 @@ class SSIStateStore:
         self._policy_token_ttl = policy_token_ttl
         self._viewer_token_ttl = viewer_token_ttl
         self._service_token_ttl = service_token_ttl
+        self._seller_token_ttl = seller_token_ttl
 
     @property
     def policy_token_ttl(self) -> int:
@@ -150,6 +174,10 @@ class SSIStateStore:
     def service_token_ttl(self) -> int:
         return self._service_token_ttl
 
+    @property
+    def seller_token_ttl(self) -> int:
+        return self._seller_token_ttl
+
     # ---- OID4VCI ----
 
     def create_offer(
@@ -159,6 +187,7 @@ class SSIStateStore:
         purpose: str,
         allowed_purposes: list[str],
         vc_kind: str = "ConsentVC",
+        seller_id: str | None = None,
     ) -> Offer:
         code = secrets.token_urlsafe(24)
         offer = Offer(
@@ -169,6 +198,7 @@ class SSIStateStore:
             allowed_purposes=allowed_purposes,
             created_at=time.time(),
             vc_kind=vc_kind,
+            seller_id=seller_id,
         )
         with self._lock:
             self._offers[code] = offer
@@ -453,3 +483,64 @@ class SSIStateStore:
             if c:
                 c.holder_did = holder_did
             return c
+
+    # ---- SellerToken (Stage 7) ----
+
+    def create_seller_token(
+        self,
+        *,
+        seller_did: str | None,
+        licensed_datasets: list[str],
+    ) -> SellerToken:
+        now = time.time()
+        st = SellerToken(
+            jti=secrets.token_hex(8),
+            token=secrets.token_urlsafe(32),
+            seller_did=seller_did,
+            licensed_datasets=list(licensed_datasets),
+            issued_at=now,
+            expires_at=now + self._seller_token_ttl,
+        )
+        with self._lock:
+            self._seller_tokens[st.token] = st
+        return st
+
+    def use_seller_token(
+        self,
+        token: str,
+        *,
+        dataset_id: str,
+    ) -> tuple[SellerToken | None, str]:
+        """Return (token, reason).
+
+        Reasons: ok, unknown, expired, dataset_not_licensed.
+        Increments register_count on success.
+        """
+        with self._lock:
+            st = self._seller_tokens.get(token)
+            if not st:
+                return None, "unknown"
+            if time.time() > st.expires_at:
+                return None, "expired"
+            if dataset_id not in st.licensed_datasets:
+                return None, "dataset_not_licensed"
+            st.register_count += 1
+            return st, "ok"
+
+    def get_seller_token(self, token: str) -> SellerToken | None:
+        with self._lock:
+            return self._seller_tokens.get(token)
+
+    def bind_merchandise_seller(
+        self, merchandise_address: str, seller_did: str
+    ) -> None:
+        """Stage 7: record which seller (did:jwk) owns a Merchandise.
+        Buyers see this back via /platform/data?merchandise=...
+        responses.
+        """
+        with self._lock:
+            self._merchandise_seller_did[merchandise_address.lower()] = seller_did
+
+    def seller_for_merchandise(self, merchandise_address: str) -> str | None:
+        with self._lock:
+            return self._merchandise_seller_did.get(merchandise_address.lower())

@@ -139,9 +139,11 @@ def _local_pex_fallback(
                     "claims": claims,
                     "holder_did": None,
                 }
-    # enforce request-time purpose/dataset
-    if claims.get("dataset_id") != dataset_id:
-        return {"verified": False, "reason": "dataset_mismatch", "claims": claims, "holder_did": None}
+    # SellerVC isn't dataset-scoped; the dataset check happens at
+    # /marketplace/register time against licensed_datasets.
+    if vc_kind != "SellerVC":
+        if claims.get("dataset_id") != dataset_id:
+            return {"verified": False, "reason": "dataset_mismatch", "claims": claims, "holder_did": None}
     if vc_kind in ("ViewerVC", "PurchaseViewerVC"):
         actions = claims.get("allowed_actions", [])
         if "read" not in actions:
@@ -150,6 +152,11 @@ def _local_pex_fallback(
         actions = claims.get("allowed_actions", [])
         if "write_continuous" not in actions:
             return {"verified": False, "reason": "action_not_allowed", "claims": claims, "holder_did": None}
+    elif vc_kind == "SellerVC":
+        if not claims.get("seller_id"):
+            return {"verified": False, "reason": "missing_seller_id", "claims": claims, "holder_did": None}
+        if not claims.get("licensed_datasets"):
+            return {"verified": False, "reason": "missing_licensed_datasets", "claims": claims, "holder_did": None}
     else:
         allowed = claims.get("allowed_purposes", [])
         if purpose not in allowed:
@@ -186,12 +193,16 @@ def build_router(deps: VerifierDeps) -> APIRouter:
     @router.get("/verifier/request")
     def verifier_request(
         request: Request,
-        dataset_id: str = Query(...),
+        # SellerVC isn't dataset-scoped; the registration step checks
+        # licensed_datasets later. Accept "*" as a sentinel here.
+        dataset_id: str = Query("*"),
         purpose: str = Query("read"),
         vc_kind: str = Query("ConsentVC"),
     ):
-        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC"):
+        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC", "SellerVC"):
             raise HTTPException(status_code=400, detail=f"unknown vc_kind: {vc_kind}")
+        if vc_kind != "SellerVC" and dataset_id == "*":
+            raise HTTPException(status_code=400, detail="dataset_id required for this vc_kind")
         match = deps.definitions.find_for_dataset(dataset_id, vc_kind=vc_kind)
         if not match:
             raise HTTPException(status_code=404, detail="no_presentation_definition_for_dataset")
@@ -229,6 +240,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             "ViewerVC": "IW3IP Viewer VC を提示",
             "ServiceVC": "IW3IP Service VC を提示",
             "PurchaseViewerVC": "IW3IP Purchase Viewer VC を提示",
+            "SellerVC": "IW3IP Seller VC を提示",
         }.get(vc_kind, "IW3IP Consent VC を提示")
         html = render_qr_page(
             title=title,
@@ -275,6 +287,21 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                         "claims": [
                             {"path": ["dataset_id"], "values": [req.dataset_id]},
                             {"path": ["allowed_actions"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
+        elif req.vc_kind == "SellerVC":
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "seller_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/SellerVC/v1"]},
+                        "claims": [
+                            {"path": ["seller_id"]},
+                            {"path": ["licensed_datasets"]},
                             {"path": ["subject_id"]},
                         ],
                     }
@@ -378,7 +405,8 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         # Phase 2/3 belt-and-braces purpose/action check after PEX
         claims = result.get("claims") or {}
         if verified:
-            if claims.get("dataset_id") not in (None, req.dataset_id):
+            # SellerVC isn't dataset-bound; skip the dataset_id check
+            if req.vc_kind != "SellerVC" and claims.get("dataset_id") not in (None, req.dataset_id):
                 verified = False
                 reason = "dataset_mismatch"
             elif req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
@@ -391,6 +419,13 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 if actions is not None and "write_continuous" not in actions:
                     verified = False
                     reason = "action_not_allowed"
+            elif req.vc_kind == "SellerVC":
+                if not claims.get("seller_id"):
+                    verified = False
+                    reason = "missing_seller_id"
+                elif not claims.get("licensed_datasets"):
+                    verified = False
+                    reason = "missing_licensed_datasets"
             else:
                 allowed = claims.get("allowed_purposes")
                 if allowed is not None and req.purpose not in allowed:
@@ -437,6 +472,28 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                         if claims.get(k) is not None:
                             resp[k] = claims[k]
                 return resp
+            if req.vc_kind == "SellerVC":
+                seller_st = deps.state.create_seller_token(
+                    seller_did=holder_did,
+                    licensed_datasets=list(claims.get("licensed_datasets") or []),
+                )
+                logger.info(
+                    "seller_token_issued jti=%s token=%s seller_id=%s licensed=%s ttl=%ss",
+                    seller_st.jti,
+                    seller_st.token,
+                    claims.get("seller_id"),
+                    seller_st.licensed_datasets,
+                    int(seller_st.expires_at - seller_st.issued_at),
+                )
+                return {
+                    "status": "allowed",
+                    "vc_kind": "SellerVC",
+                    "seller_token": seller_st.token,
+                    "seller_token_jti": seller_st.jti,
+                    "seller_id": claims.get("seller_id"),
+                    "licensed_datasets": seller_st.licensed_datasets,
+                    "expires_in": int(seller_st.expires_at - seller_st.issued_at),
+                }
             if req.vc_kind == "ServiceVC":
                 st = deps.state.create_service_token(
                     dataset_id=req.dataset_id,
