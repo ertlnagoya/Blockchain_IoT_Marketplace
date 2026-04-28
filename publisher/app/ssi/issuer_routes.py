@@ -4,10 +4,13 @@ import json
 import time
 import urllib.parse
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from audit.models import AuditLogRecord
+from audit.repository import SQLiteAuditRepository
 from publisher.app.ssi.config import SSISettings
 from publisher.app.ssi.did_jwk import did_jwk_from_public_jwk, public_jwk_from_did_jwk
 from publisher.app.ssi.html import render_qr_page
@@ -23,23 +26,29 @@ VIEWER_VC_CONFIG_ID = "ViewerVC"
 VIEWER_VCT = "https://iw3ip.example/credentials/ViewerVC/v1"
 SERVICE_VC_CONFIG_ID = "ServiceVC"
 SERVICE_VCT = "https://iw3ip.example/credentials/ServiceVC/v1"
+PURCHASE_VIEWER_VC_CONFIG_ID = "PurchaseViewerVC"
+PURCHASE_VIEWER_VCT = "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
 
 # Backwards-compatible aliases for code/tests that imported the originals.
 CREDENTIAL_CONFIG_ID = CONSENT_VC_CONFIG_ID
 VCT = CONSENT_VCT
 
-# ConsentVC = single-use write authz (Stage 1)
-# ViewerVC  = multi-use read authz   (Stage 3)
-# ServiceVC = multi-use write authz  (Stage 4 prep, M2M)
+# ConsentVC         = single-use write authz       (Stage 1)
+# ViewerVC          = multi-use read authz         (Stage 3)
+# ServiceVC         = multi-use write authz, M2M   (Stage 4 prep)
+# PurchaseViewerVC  = read authz tied to a Merchandise.Purchase tx
+#                     (v2 / Stage 5, marketplace bridge)
 VC_KIND_TO_VCT = {
     "ConsentVC": CONSENT_VCT,
     "ViewerVC": VIEWER_VCT,
     "ServiceVC": SERVICE_VCT,
+    "PurchaseViewerVC": PURCHASE_VIEWER_VCT,
 }
 VC_KIND_TO_CONFIG_ID = {
     "ConsentVC": CONSENT_VC_CONFIG_ID,
     "ViewerVC": VIEWER_VC_CONFIG_ID,
     "ServiceVC": SERVICE_VC_CONFIG_ID,
+    "PurchaseViewerVC": PURCHASE_VIEWER_VC_CONFIG_ID,
 }
 
 DEEPLINK_SCHEME = "openid-credential-offer://"
@@ -58,6 +67,7 @@ class IssuerDeps:
     settings: SSISettings
     keys: IssuerKeyStore
     state: SSIStateStore
+    audit_repo: SQLiteAuditRepository | None = None  # M3: required for PurchaseViewerVC
 
 
 def _issuer_did(keys: IssuerKeyStore) -> str:
@@ -134,6 +144,24 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                 "claims": {
                     "dataset_id": {"display": [{"name": "Dataset ID"}]},
                     "allowed_actions": {"display": [{"name": "Allowed actions"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
+                },
+            },
+            PURCHASE_VIEWER_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": PURCHASE_VIEWER_VCT,
+                "scope": "PurchaseViewerVC",
+                "display": [
+                    {"name": "IW3IP Purchase Viewer Credential", "locale": "en"},
+                    {"name": "IW3IP 購入閲覧クレデンシャル", "locale": "ja"},
+                ],
+                "claims": {
+                    "dataset_id": {"display": [{"name": "Dataset ID"}]},
+                    "allowed_actions": {"display": [{"name": "Allowed actions"}]},
+                    "merchandise_address": {"display": [{"name": "Merchandise contract"}]},
+                    "buyer_eth_addr": {"display": [{"name": "Buyer ETH address"}]},
+                    "tx_hash": {"display": [{"name": "Purchase tx hash"}]},
                     "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
                     "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
                 },
@@ -219,9 +247,14 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         elif type == "ViewerVC":
             allowed = ["read"]
             page_title = "IW3IP Viewer VC を発行"
-        else:  # ServiceVC: M2M write authz
+        elif type == "ServiceVC":
             allowed = ["write_continuous"]
             page_title = "IW3IP Service VC を発行"
+        else:  # PurchaseViewerVC: bridge issues these via /marketplace/claim,
+            # not directly via /issuer/offer. We still support the manual path
+            # for hands-on debugging.
+            allowed = ["read"]
+            page_title = "IW3IP Purchase Viewer VC を発行"
 
         offer = deps.state.create_offer(
             credential_config_id=config_id,
@@ -332,7 +365,46 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         issuer_did = _issuer_did(deps.keys)
         holder_did = did_jwk_from_public_jwk(holder_jwk)
 
-        if offer.vc_kind in ("ViewerVC", "ServiceVC"):
+        if offer.vc_kind == "PurchaseViewerVC":
+            # M3: fold marketplace context into the claims and link the
+            # holder DID back to the bridge-recorded claim.
+            claim = deps.state.find_marketplace_claim_by_code(
+                offer.pre_authorized_code
+            )
+            plain_claims = {
+                "dataset_id": offer.dataset_id,
+                "allowed_actions": offer.allowed_purposes,
+                "iw3ip_issuer": deps.settings.issuer_id,
+            }
+            if claim:
+                plain_claims.update({
+                    "merchandise_address": claim.merchandise_address,
+                    "buyer_eth_addr": claim.buyer_eth_addr,
+                    "tx_hash": claim.tx_hash,
+                    "purchased_at": int(claim.created_at),
+                })
+                deps.state.attach_holder_to_claim(claim.claim_id, holder_did)
+                # Audit the eth_addr <-> did:jwk binding now that we have both.
+                if deps.audit_repo is not None:
+                    deps.audit_repo.write(
+                        AuditLogRecord(
+                            ts=datetime.now(timezone.utc).isoformat(),
+                            action="allow",
+                            subject_did=holder_did,
+                            dataset_id=claim.dataset_id,
+                            purpose="purchase_link",
+                            reason=(
+                                f"eth_did_bound:claim={claim.claim_id}"
+                                f":eth={claim.buyer_eth_addr}:tx={claim.tx_hash}"
+                            ),
+                            message_hash="",
+                            raw_topic="marketplace/issued",
+                            holder_did=holder_did,
+                            vc_hash=None,
+                            presentation_verified="allow",
+                        )
+                    )
+        elif offer.vc_kind in ("ViewerVC", "ServiceVC"):
             plain_claims = {
                 "dataset_id": offer.dataset_id,
                 "allowed_actions": offer.allowed_purposes,

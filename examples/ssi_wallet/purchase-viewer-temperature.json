@@ -1,0 +1,42 @@
+{
+  "id": "purchase-viewer-temperature",
+  "name": "PurchaseViewer VC for home/env/temperature",
+  "purpose": "Verify the wallet holds a PurchaseViewerVC bound to a Merchandise.Purchase tx for temperature data.",
+  "iw3ip_dataset_id": "home/env/temperature",
+  "iw3ip_vc_kind": "PurchaseViewerVC",
+  "input_descriptors": [
+    {
+      "id": "purchase_viewer_vc_temperature",
+      "name": "PurchaseViewerVC (temperature)",
+      "format": {
+        "vc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        }
+      },
+      "constraints": {
+        "fields": [
+          {
+            "path": ["$.vct"],
+            "filter": {
+              "type": "string",
+              "const": "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
+            }
+          },
+          {
+            "path": ["$.dataset_id"],
+            "filter": {
+              "type": "string",
+              "const": "home/env/temperature"
+            }
+          },
+          { "path": ["$.allowed_actions"], "filter": { "type": "array" } },
+          { "path": ["$.merchandise_address"], "filter": { "type": "string" } },
+          { "path": ["$.buyer_eth_addr"], "filter": { "type": "string" } },
+          { "path": ["$.tx_hash"], "filter": { "type": "string" } },
+          { "path": ["$.subject_id"] }
+        ]
+      }
+    }
+  ]
+}
