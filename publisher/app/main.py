@@ -302,10 +302,18 @@ def platform_data(
             presentation_verified="allow",
         )
     )
+    # Stage 7: surface the registered seller_did when the data is being
+    # read via a merchandise lookup so buyers see who sold it. For
+    # plain dataset_id reads we leave seller_did out (no merchandise
+    # context available).
+    seller_did = (
+        ssi_state.seller_for_merchandise(merchandise) if merchandise else None
+    )
     return {
         "dataset_id": vt.dataset_id,
         "count": len(rows),
         "read_count": vt.read_count,
+        "seller_did": seller_did or ("unknown" if merchandise else None),
         "rows": rows,
     }
 
@@ -422,4 +430,142 @@ def marketplace_claim_status(claim_id: str) -> dict:
         "dataset_id": c.dataset_id,
         "status": "delivered" if c.holder_did else "pending",
         "holder_did": c.holder_did,
+    }
+
+
+# ---- Marketplace seller registration (Stage 7 / C3) ----
+
+from publisher.app.chain_client import ChainClient, ChainClientSettings  # noqa: E402
+
+_chain_client = ChainClient(
+    ChainClientSettings(rpc_url=settings.marketplace_hardhat_rpc)
+)
+
+
+@app.post("/marketplace/register")
+def marketplace_register(
+    body: dict,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Seller -> publisher: bind a Merchandise to a SellerVC holder.
+
+    Required body fields: merchandise_address, seller_eth_addr,
+    tx_hash, dataset_id. Authorization is a Bearer SellerToken.
+    The dataset_id must be in the SellerToken's licensed_datasets;
+    when MARKETPLACE_HARDHAT_RPC is configured we additionally verify
+    Merchandise.getOwner() == seller_eth_addr (Stage 7 spec Q2).
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="missing_authorization_header")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="invalid_authorization_header")
+
+    for f in ("merchandise_address", "seller_eth_addr", "tx_hash", "dataset_id"):
+        if not body.get(f):
+            raise HTTPException(status_code=400, detail=f"missing_field:{f}")
+
+    merchandise_address = str(body["merchandise_address"])
+    seller_eth_addr = str(body["seller_eth_addr"]).lower()
+    tx_hash = str(body["tx_hash"])
+    dataset_id = str(body["dataset_id"])
+
+    seller_token, reason = ssi_state.use_seller_token(token, dataset_id=dataset_id)
+    if not seller_token:
+        audit_repo.write(
+            AuditLogRecord(
+                ts=datetime.now(timezone.utc).isoformat(),
+                action="deny",
+                subject_did=f"eth:{seller_eth_addr}",
+                dataset_id=dataset_id,
+                purpose="register",
+                reason=f"seller_token_{reason}",
+                message_hash="",
+                raw_topic="marketplace/seller_registered",
+                holder_did=None,
+                vc_hash=None,
+                presentation_verified="deny",
+            )
+        )
+        status = 401 if reason in ("unknown", "expired") else 403
+        raise HTTPException(status_code=status, detail=f"seller_token_{reason}")
+
+    # On-chain owner verify (Stage 7 spec Q2). When the RPC is not
+    # configured we skip the check and surface that fact in the audit
+    # reason so it's visible after the fact.
+    owner_verify = "skipped"
+    if _chain_client._settings.enabled:  # noqa: SLF001
+        on_chain_owner = _chain_client.merchandise_owner(merchandise_address)
+        if on_chain_owner is None:
+            owner_verify = "rpc_failed"
+            audit_repo.write(
+                AuditLogRecord(
+                    ts=datetime.now(timezone.utc).isoformat(),
+                    action="deny",
+                    subject_did=seller_token.seller_did or f"eth:{seller_eth_addr}",
+                    dataset_id=dataset_id,
+                    purpose="register",
+                    reason=f"chain_rpc_failed:{merchandise_address}",
+                    message_hash="",
+                    raw_topic="marketplace/seller_registered",
+                    holder_did=seller_token.seller_did,
+                    vc_hash=None,
+                    presentation_verified="deny",
+                )
+            )
+            raise HTTPException(status_code=502, detail="chain_rpc_failed")
+        if on_chain_owner != seller_eth_addr:
+            owner_verify = "mismatch"
+            audit_repo.write(
+                AuditLogRecord(
+                    ts=datetime.now(timezone.utc).isoformat(),
+                    action="deny",
+                    subject_did=seller_token.seller_did or f"eth:{seller_eth_addr}",
+                    dataset_id=dataset_id,
+                    purpose="register",
+                    reason=(
+                        f"owner_mismatch:on_chain={on_chain_owner}:"
+                        f"posted={seller_eth_addr}"
+                    ),
+                    message_hash="",
+                    raw_topic="marketplace/seller_registered",
+                    holder_did=seller_token.seller_did,
+                    vc_hash=None,
+                    presentation_verified="deny",
+                )
+            )
+            raise HTTPException(status_code=403, detail="owner_mismatch")
+        owner_verify = "verified"
+
+    seller_did = seller_token.seller_did or "unknown"
+    ssi_state.bind_merchandise_seller(merchandise_address, seller_did)
+
+    audit_repo.write(
+        AuditLogRecord(
+            ts=datetime.now(timezone.utc).isoformat(),
+            action="allow",
+            subject_did=seller_did,
+            dataset_id=dataset_id,
+            purpose="register",
+            reason=(
+                f"seller_register:jti={seller_token.jti}:"
+                f"merchandise={merchandise_address}:eth={seller_eth_addr}:"
+                f"tx={tx_hash}:owner_verify={owner_verify}"
+            ),
+            message_hash="",
+            raw_topic="marketplace/seller_registered",
+            holder_did=seller_token.seller_did,
+            vc_hash=None,
+            presentation_verified="allow",
+        )
+    )
+
+    return {
+        "registered": True,
+        "merchandise_address": merchandise_address,
+        "seller_did": seller_did,
+        "dataset_id": dataset_id,
+        "tx_hash": tx_hash,
+        "register_count": seller_token.register_count,
+        "owner_verify": owner_verify,
     }

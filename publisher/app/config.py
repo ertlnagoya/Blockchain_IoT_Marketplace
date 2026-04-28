@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     audit_db_path: str = "audit/audit.db"
     consent_store_path: str | None = None
 
+    # Stage 7 (case C): when set, /marketplace/register verifies that
+    # Merchandise.getOwner() == seller_eth_addr against this RPC. Leave
+    # unset in tests/dev to skip the check (and in audit log we'll mark
+    # the registration as "owner_verify=skipped").
+    marketplace_hardhat_rpc: str | None = None
+
     @property
     def topic_list(self) -> list[str]:
         return [t.strip() for t in self.mqtt_topics.split(",") if t.strip()]
