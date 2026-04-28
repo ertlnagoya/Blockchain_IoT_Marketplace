@@ -32,9 +32,20 @@
 					value: ethers.parseEther(data.price)
 				});
 				purchaseStatus = transactionResponse.wait(1);
-				await purchaseStatus;
-				alert('Purchased is Confirmed!\nWe will reload the page to update the status');
-				location.reload();
+				const receipt = await purchaseStatus;
+				const buyer = await signer.getAddress();
+				const txHash = receipt?.hash ?? transactionResponse.hash;
+				// v2 / Stage 5: redirect to the post-purchase VC delivery
+				// page, which calls publisher /marketplace/claim and shows
+				// the OID4VCI deeplink + QR for the wallet to receive a
+				// PurchaseViewerVC. Hand-off is idempotent on tx_hash.
+				const dataset = data.datasetId ?? 'home/env/temperature';
+				const params = new URLSearchParams({
+					merchandise: data.address,
+					dataset,
+					buyer
+				});
+				window.location.href = `/purchased/${txHash}?${params.toString()}`;
 			} catch (err: unknown) {
 				throw new Error((err as Error).message);
 			}
