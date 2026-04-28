@@ -435,3 +435,28 @@ uv run pytest -q
 - `dataset_id`: 正規化後の論理データ分類（ポリシー照合に使用）
 - `purpose`: 共有目的（例: `research`）
 - `PEP`: ポリシー適用ポイント（Phase 3 で導入予定）
+
+## ロードマップ (Phase 2 の次、**Stage 8**)
+
+Phase 2 で 5 種類の VC、4 種類のトークン、7 段階のハンズオンが揃いました
+([全体像](https://iw3ip.github.io/design/vc-architecture-overview/))。
+ただし信頼モデルには **off-chain 前提**がいくつか残っており、次の段階で
+これらを堅化します:
+
+- **Stage 8a — EIP-712 バインド** (eth_addr ↔ did:jwk のなりすまし対策):
+  bridge を信用するだけの `eth_did_bound` audit 行を、buyer 自身が EIP-712
+  形式で署名する形に置き換える。bridge を信用源から外す。
+- **Stage 8b — on-chain 出品ガード**: `IoTMarket` (または新規
+  `IoTMarketV2`) で `registerMerchandise()` が SellerToken proof を
+  on-chain で要求する形に拡張。publisher を経由しない直接コントラクト
+  呼出のバイパスを塞ぐ。
+- **Stage 8c — VC 失効**: W3C Status List 2021 を `/verifier/status` で
+  公開し、提示時に検証する。ConsentVC / SellerVC を有効期限前に取り消し
+  可能にする。
+- **Stage 8d — on-chain VC 検証**: SellerVC / ConsentVC の有効性を
+  on-chain で証明 (signature relay or ZK)。Solidity コントラクト側で
+  publisher を信用せずに VC 層を参照できるようにする。
+
+推奨順: 8a → 8c → 8b → 8d (各段階が次を解放する)。
+作業は `stage8` ラベル / project board で追跡。本格的な仕様は
+`iw3ip.github.io/docs/design/stage8-*.md` に随時。
