@@ -13,6 +13,12 @@ const IOT_MARKET_ABI = [
   "function getMerchandises() view returns (address[])",
 ];
 
+// We only need the read function to fetch dataset_id from additionalInfo;
+// the Purchase event is parsed via topic0 + the logs interface below.
+const MERCHANDISE_READ_ABI = [
+  "function getAllAdditionalInfo() view returns (tuple(string key, string value)[])",
+];
+
 const PURCHASE_FRAGMENT =
   "event Purchase(address indexed owner, address indexed buyer, string pubkey)";
 const MERCHANDISE_IFACE = new Interface([PURCHASE_FRAGMENT]);
@@ -41,6 +47,31 @@ export async function startListener(opts: ListenerOptions): Promise<() => void> 
 
   let stopped = false;
   const seenTx = new Set<string>();
+  // merchandise_address (lowercased) -> dataset_id resolved from
+  // its additionalInfo. Cached on first lookup so we don't re-query
+  // chain on every event from the same merchandise.
+  const datasetCache = new Map<string, string>();
+
+  const resolveDatasetId = async (merchandiseAddr: string): Promise<string> => {
+    const key = merchandiseAddr.toLowerCase();
+    const hit = datasetCache.get(key);
+    if (hit) return hit;
+    try {
+      const m = new Contract(merchandiseAddr, MERCHANDISE_READ_ABI, provider);
+      const pairs: Array<{ key: string; value: string }> =
+        await m.getAllAdditionalInfo();
+      for (const p of pairs) {
+        if (p.key === "dataset_id" && p.value) {
+          datasetCache.set(key, p.value);
+          return p.value;
+        }
+      }
+    } catch (e) {
+      log(`bridge: getAllAdditionalInfo(${merchandiseAddr}) failed: ${(e as Error).message}`);
+    }
+    datasetCache.set(key, opts.datasetDefault);
+    return opts.datasetDefault;
+  };
 
   const tick = async () => {
     if (stopped) return;
@@ -62,15 +93,16 @@ export async function startListener(opts: ListenerOptions): Promise<() => void> 
           });
           if (!parsed) continue;
           const buyer = parsed.args.buyer as string;
+          const datasetId = await resolveDatasetId(ev.address);
           log(
-            `bridge: Purchase event from ${ev.address} buyer=${buyer} tx=${ev.transactionHash}`,
+            `bridge: Purchase event from ${ev.address} buyer=${buyer} dataset=${datasetId} tx=${ev.transactionHash}`,
           );
           try {
             const resp = await opts.publisher.claim({
               merchandise_address: ev.address,
               buyer_eth_addr: buyer,
               tx_hash: ev.transactionHash,
-              dataset_id: opts.datasetDefault, // TODO M3+: read from Merchandise additionalInfo
+              dataset_id: datasetId,
               purchase_amount_wei: "0", // TODO: read from tx
             });
             log(`bridge: claim ok jti=${resp.claim_id} deeplink=${resp.deeplink}`);

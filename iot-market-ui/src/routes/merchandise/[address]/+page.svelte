@@ -39,7 +39,14 @@
 				// page, which calls publisher /marketplace/claim and shows
 				// the OID4VCI deeplink + QR for the wallet to receive a
 				// PurchaseViewerVC. Hand-off is idempotent on tx_hash.
-				const dataset = data.datasetId ?? 'home/env/temperature';
+				//
+				// Stage 6 / case B: dataset_id is read from on-chain
+				// additionalInfo if present; falls back to default for
+				// backwards-compatible deployments.
+				const datasetEntry = data.additionalInfo?.find(
+					(entry: { key: string; value: string }) => entry.key === 'dataset_id'
+				);
+				const dataset = datasetEntry?.value ?? 'home/env/temperature';
 				const params = new URLSearchParams({
 					merchandise: data.address,
 					dataset,

@@ -1,12 +1,15 @@
 import { ethers } from "hardhat";
 import "dotenv/config";
 
+// Stage 6 / case B: each Merchandise advertises its dataset_id in
+// additionalInfo so the bridge (and iot-market-ui) can read the dataset
+// straight off chain instead of relying on a hardcoded default.
 const metadatas = [
-  { fileType: "mp4", dataSize: "100MB" },
-  { fileType: "jpg", dataSize: "10MB" },
-  { fileType: "txt", dataSize: "1MB" },
-  { fileType: "mp4", dataSize: "16MB" },
-  { fileType: "png", dataSize: "5MB" },
+  { fileType: "mp4", dataSize: "100MB", datasetId: "home/env/temperature" },
+  { fileType: "jpg", dataSize: "10MB", datasetId: "home/env/temperature" },
+  { fileType: "txt", dataSize: "1MB", datasetId: "home/env/humidity" },
+  { fileType: "mp4", dataSize: "16MB", datasetId: "home/env/temperature" },
+  { fileType: "png", dataSize: "5MB", datasetId: "home/env/flood_risk_high" },
 ];
 
 const main = async () => {
@@ -27,8 +30,8 @@ const main = async () => {
       await createDataHash("test"),
       pubKey,
       [deniedBuyer],
-      ["fileType", "dataSize"],
-      [metadatas[i].fileType, metadatas[i].dataSize],
+      ["fileType", "dataSize", "dataset_id"],
+      [metadatas[i].fileType, metadatas[i].dataSize, metadatas[i].datasetId],
     ]);
 
     await merchandise.waitForDeployment();
