@@ -82,7 +82,8 @@ ssi_pex_client = PEXSidecarClient(ssi_settings.pex_sidecar_url)
 app.include_router(
     issuer_routes.build_router(
         issuer_routes.IssuerDeps(
-            settings=ssi_settings, keys=ssi_keys, state=ssi_state
+            settings=ssi_settings, keys=ssi_keys, state=ssi_state,
+            audit_repo=audit_repo,
         )
     )
 )
@@ -324,16 +325,17 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
     # ViewerVC offer for the dataset.
     if created:
         # Reserve an Offer entry so /issuer/token can find the
-        # pre_authorized_code we just minted.
+        # pre_authorized_code we just minted. M3: PurchaseViewerVC
+        # binds merchandise + tx + buyer_eth_addr to the issued credential.
         ssi_state._offers[claim.pre_authorized_code] = (  # noqa: SLF001
             __import__("publisher.app.ssi.state", fromlist=["Offer"]).Offer(
                 pre_authorized_code=claim.pre_authorized_code,
-                credential_config_id="ViewerVC",  # M3: switch to PurchaseViewerVC
+                credential_config_id="PurchaseViewerVC",
                 dataset_id=claim.dataset_id,
                 purpose="read",
                 allowed_purposes=["read"],
                 created_at=claim.created_at,
-                vc_kind="ViewerVC",  # M3: PurchaseViewerVC
+                vc_kind="PurchaseViewerVC",
             )
         )
         audit_repo.write(
@@ -355,7 +357,7 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
     public_base = externally_reachable_base_url(request, ssi_settings.issuer_base_url)
     co = {
         "credential_issuer": public_base,
-        "credential_configuration_ids": ["ViewerVC"],
+        "credential_configuration_ids": ["PurchaseViewerVC"],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": claim.pre_authorized_code,
@@ -367,7 +369,7 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         + _urllib.quote(_json.dumps(co, separators=(",", ":")))
     )
     offer_url = (
-        f"{public_base}/issuer/offer?type=ViewerVC"
+        f"{public_base}/issuer/offer?type=PurchaseViewerVC"
         f"&dataset_id={_urllib.quote(claim.dataset_id)}&purpose=read"
         f"&claim_id={claim.claim_id}"
     )

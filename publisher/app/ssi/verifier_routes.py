@@ -142,7 +142,7 @@ def _local_pex_fallback(
     # enforce request-time purpose/dataset
     if claims.get("dataset_id") != dataset_id:
         return {"verified": False, "reason": "dataset_mismatch", "claims": claims, "holder_did": None}
-    if vc_kind == "ViewerVC":
+    if vc_kind in ("ViewerVC", "PurchaseViewerVC"):
         actions = claims.get("allowed_actions", [])
         if "read" not in actions:
             return {"verified": False, "reason": "action_not_allowed", "claims": claims, "holder_did": None}
@@ -190,7 +190,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         purpose: str = Query("read"),
         vc_kind: str = Query("ConsentVC"),
     ):
-        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC"):
+        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC"):
             raise HTTPException(status_code=400, detail=f"unknown vc_kind: {vc_kind}")
         match = deps.definitions.find_for_dataset(dataset_id, vc_kind=vc_kind)
         if not match:
@@ -228,6 +228,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         title = {
             "ViewerVC": "IW3IP Viewer VC を提示",
             "ServiceVC": "IW3IP Service VC を提示",
+            "PurchaseViewerVC": "IW3IP Purchase Viewer VC を提示",
         }.get(vc_kind, "IW3IP Consent VC を提示")
         html = render_qr_page(
             title=title,
@@ -274,6 +275,24 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                         "claims": [
                             {"path": ["dataset_id"], "values": [req.dataset_id]},
                             {"path": ["allowed_actions"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
+        elif req.vc_kind == "PurchaseViewerVC":
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "purchase_viewer_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/PurchaseViewerVC/v1"]},
+                        "claims": [
+                            {"path": ["dataset_id"], "values": [req.dataset_id]},
+                            {"path": ["allowed_actions"]},
+                            {"path": ["merchandise_address"]},
+                            {"path": ["buyer_eth_addr"]},
+                            {"path": ["tx_hash"]},
                             {"path": ["subject_id"]},
                         ],
                     }
@@ -362,7 +381,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             if claims.get("dataset_id") not in (None, req.dataset_id):
                 verified = False
                 reason = "dataset_mismatch"
-            elif req.vc_kind == "ViewerVC":
+            elif req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
                 actions = claims.get("allowed_actions")
                 if actions is not None and "read" not in actions:
                     verified = False
@@ -392,24 +411,32 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             verified="allow" if verified else "deny",
         )
         if verified:
-            if req.vc_kind == "ViewerVC":
+            if req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
                 vt = deps.state.create_viewer_token(
                     dataset_id=req.dataset_id,
                     holder_did=holder_did,
                 )
                 logger.info(
-                    "viewer_token_issued jti=%s token=%s dataset=%s ttl=%ss",
-                    vt.jti, vt.token, vt.dataset_id,
+                    "viewer_token_issued vc_kind=%s jti=%s token=%s dataset=%s ttl=%ss",
+                    req.vc_kind, vt.jti, vt.token, vt.dataset_id,
                     int(vt.expires_at - vt.issued_at),
                 )
-                return {
+                resp: dict = {
                     "status": "allowed",
                     "dataset_id": req.dataset_id,
-                    "vc_kind": "ViewerVC",
+                    "vc_kind": req.vc_kind,
                     "viewer_token": vt.token,
                     "viewer_token_jti": vt.jti,
                     "expires_in": int(vt.expires_at - vt.issued_at),
                 }
+                # Surface marketplace context in the response so the
+                # iot-market-ui flow (M5) can correlate without re-decoding
+                # the VC.
+                if req.vc_kind == "PurchaseViewerVC":
+                    for k in ("merchandise_address", "buyer_eth_addr", "tx_hash"):
+                        if claims.get(k) is not None:
+                            resp[k] = claims[k]
+                return resp
             if req.vc_kind == "ServiceVC":
                 st = deps.state.create_service_token(
                     dataset_id=req.dataset_id,
