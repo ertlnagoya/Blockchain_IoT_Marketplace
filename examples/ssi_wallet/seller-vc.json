@@ -1,0 +1,33 @@
+{
+  "id": "seller-vc",
+  "name": "Seller VC for marketplace registration",
+  "purpose": "Verify the wallet holds a SellerVC authorising marketplace listing for one or more datasets.",
+  "iw3ip_dataset_id": "*",
+  "iw3ip_vc_kind": "SellerVC",
+  "input_descriptors": [
+    {
+      "id": "seller_vc",
+      "name": "SellerVC",
+      "format": {
+        "vc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        }
+      },
+      "constraints": {
+        "fields": [
+          {
+            "path": ["$.vct"],
+            "filter": {
+              "type": "string",
+              "const": "https://iw3ip.example/credentials/SellerVC/v1"
+            }
+          },
+          { "path": ["$.seller_id"], "filter": { "type": "string" } },
+          { "path": ["$.licensed_datasets"], "filter": { "type": "array" } },
+          { "path": ["$.subject_id"] }
+        ]
+      }
+    }
+  ]
+}

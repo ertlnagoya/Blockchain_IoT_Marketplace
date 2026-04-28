@@ -28,6 +28,8 @@ SERVICE_VC_CONFIG_ID = "ServiceVC"
 SERVICE_VCT = "https://iw3ip.example/credentials/ServiceVC/v1"
 PURCHASE_VIEWER_VC_CONFIG_ID = "PurchaseViewerVC"
 PURCHASE_VIEWER_VCT = "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
+SELLER_VC_CONFIG_ID = "SellerVC"
+SELLER_VCT = "https://iw3ip.example/credentials/SellerVC/v1"
 
 # Backwards-compatible aliases for code/tests that imported the originals.
 CREDENTIAL_CONFIG_ID = CONSENT_VC_CONFIG_ID
@@ -43,12 +45,14 @@ VC_KIND_TO_VCT = {
     "ViewerVC": VIEWER_VCT,
     "ServiceVC": SERVICE_VCT,
     "PurchaseViewerVC": PURCHASE_VIEWER_VCT,
+    "SellerVC": SELLER_VCT,
 }
 VC_KIND_TO_CONFIG_ID = {
     "ConsentVC": CONSENT_VC_CONFIG_ID,
     "ViewerVC": VIEWER_VC_CONFIG_ID,
     "ServiceVC": SERVICE_VC_CONFIG_ID,
     "PurchaseViewerVC": PURCHASE_VIEWER_VC_CONFIG_ID,
+    "SellerVC": SELLER_VC_CONFIG_ID,
 }
 
 DEEPLINK_SCHEME = "openid-credential-offer://"
@@ -148,6 +152,21 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                     "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
                 },
             },
+            SELLER_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": SELLER_VCT,
+                "scope": "SellerVC",
+                "display": [
+                    {"name": "IW3IP Seller Credential", "locale": "en"},
+                    {"name": "IW3IP セラークレデンシャル", "locale": "ja"},
+                ],
+                "claims": {
+                    "seller_id": {"display": [{"name": "Seller ID"}]},
+                    "licensed_datasets": {"display": [{"name": "Licensed datasets"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
+                },
+            },
             PURCHASE_VIEWER_VC_CONFIG_ID: {
                 **common_alg,
                 "vct": PURCHASE_VIEWER_VCT,
@@ -231,18 +250,30 @@ def build_router(deps: IssuerDeps) -> APIRouter:
     def issuer_offer(
         request: Request,
         type: str = Query("ConsentVC", alias="type"),
-        dataset_id: str = Query(...),
+        # SellerVC doesn't bind to a single dataset, so dataset_id is
+        # optional for it; required for everything else.
+        dataset_id: str | None = Query(default=None),
         purpose: str = Query("read"),
+        seller_id: str | None = Query(default=None),
+        licensed_datasets: str | None = Query(
+            default=None,
+            description="Comma-separated dataset_ids the SellerVC licenses",
+        ),
     ):
         if type not in VC_KIND_TO_CONFIG_ID:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown VC type: {type} (supported: {list(VC_KIND_TO_CONFIG_ID)})",
             )
+        if type != "SellerVC" and not dataset_id:
+            raise HTTPException(
+                status_code=400, detail="dataset_id required for this VC type"
+            )
         config_id = VC_KIND_TO_CONFIG_ID[type]
+        offer_seller_id: str | None = None
 
         if type == "ConsentVC":
-            allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id, [purpose])
+            allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id or "", [purpose])
             page_title = "IW3IP Consent VC を発行"
         elif type == "ViewerVC":
             allowed = ["read"]
@@ -250,18 +281,36 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         elif type == "ServiceVC":
             allowed = ["write_continuous"]
             page_title = "IW3IP Service VC を発行"
-        else:  # PurchaseViewerVC: bridge issues these via /marketplace/claim,
-            # not directly via /issuer/offer. We still support the manual path
-            # for hands-on debugging.
+        elif type == "SellerVC":
+            if not seller_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seller_id required for SellerVC",
+                )
+            datasets = [
+                d.strip() for d in (licensed_datasets or "").split(",") if d.strip()
+            ]
+            if not datasets:
+                raise HTTPException(
+                    status_code=400,
+                    detail="licensed_datasets required (comma-separated dataset_ids)",
+                )
+            allowed = datasets  # reused as licensed_datasets in SellerVC claims
+            offer_seller_id = seller_id
+            page_title = "IW3IP Seller VC を発行"
+            # SellerVC isn't dataset-scoped; carry a sentinel for storage.
+            dataset_id = "*"
+        else:  # PurchaseViewerVC
             allowed = ["read"]
             page_title = "IW3IP Purchase Viewer VC を発行"
 
         offer = deps.state.create_offer(
             credential_config_id=config_id,
-            dataset_id=dataset_id,
+            dataset_id=dataset_id or "",
             purpose=purpose,
             allowed_purposes=allowed,
             vc_kind=type,
+            seller_id=offer_seller_id,
         )
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         co = _credential_offer(public_base, offer.pre_authorized_code, config_id)
@@ -404,6 +453,12 @@ def build_router(deps: IssuerDeps) -> APIRouter:
                             presentation_verified="allow",
                         )
                     )
+        elif offer.vc_kind == "SellerVC":
+            plain_claims = {
+                "seller_id": offer.seller_id or "unknown",
+                "licensed_datasets": offer.allowed_purposes,
+                "iw3ip_issuer": deps.settings.issuer_id,
+            }
         elif offer.vc_kind in ("ViewerVC", "ServiceVC"):
             plain_claims = {
                 "dataset_id": offer.dataset_id,
