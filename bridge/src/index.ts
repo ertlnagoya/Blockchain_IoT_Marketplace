@@ -7,7 +7,7 @@ import { PublisherClient } from "./publisher_client.js";
 
 async function main() {
   const cfg = loadConfig();
-  const publisher = new PublisherClient(cfg.publisherUrl);
+  const publisher = new PublisherClient(cfg.publisherUrl, cfg.publicPublisherUrl);
   const stop = await startListener({
     rpcUrl: cfg.hardhatRpc,
     iotMarketAddress: cfg.iotMarketAddress,
