@@ -233,15 +233,40 @@ def platform_ingest(
 
 @app.get("/platform/data")
 def platform_data(
-    dataset_id: str,
+    dataset_id: str | None = None,
+    merchandise: str | None = None,
     authorization: str | None = Header(default=None),
 ) -> dict:
-    """Read ingested rows for a dataset, gated by ViewerToken (Stage 3)."""
+    """Read ingested rows for a dataset, gated by ViewerToken.
+
+    Two ways to identify the dataset:
+      - dataset_id=<id>            (Stage 3 / generic)
+      - merchandise=<address>      (Stage 5 / v2: resolves the
+                                    dataset_id via the marketplace claim
+                                    indexed during /marketplace/claim)
+    Exactly one of the two is required.
+    """
     if not authorization:
         raise HTTPException(status_code=401, detail="missing_authorization_header")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise HTTPException(status_code=401, detail="invalid_authorization_header")
+
+    if (dataset_id is None) == (merchandise is None):
+        raise HTTPException(
+            status_code=400,
+            detail="provide_exactly_one_of_dataset_id_or_merchandise",
+        )
+
+    if merchandise is not None:
+        resolved = ssi_state.dataset_for_merchandise(merchandise)
+        if resolved is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unknown_merchandise:{merchandise}",
+            )
+        dataset_id = resolved
+
     vt, reason = ssi_state.use_viewer_token(token, dataset_id=dataset_id)
     if not vt:
         audit_repo.write(

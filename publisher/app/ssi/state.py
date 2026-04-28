@@ -128,6 +128,10 @@ class SSIStateStore:
         self._service_tokens: dict[str, ServiceToken] = {}
         self._marketplace_claims: dict[str, MarketplaceClaim] = {}
         self._marketplace_claims_by_tx: dict[str, MarketplaceClaim] = {}
+        # M4: merchandise_address -> dataset_id, populated from claims so
+        # /platform/data?merchandise=<addr> can resolve a dataset without
+        # asking the buyer to type it.
+        self._merchandise_dataset: dict[str, str] = {}
         self._offer_ttl = offer_ttl
         self._response_ttl = response_ttl
         self._policy_token_ttl = policy_token_ttl
@@ -418,7 +422,13 @@ class SSIStateStore:
             )
             self._marketplace_claims[claim.claim_id] = claim
             self._marketplace_claims_by_tx[tx_hash] = claim
+            # M4: opportunistically index merchandise -> dataset_id
+            self._merchandise_dataset[merchandise_address.lower()] = dataset_id
         return claim, True
+
+    def dataset_for_merchandise(self, merchandise_address: str) -> str | None:
+        with self._lock:
+            return self._merchandise_dataset.get(merchandise_address.lower())
 
     def get_marketplace_claim(self, claim_id: str) -> MarketplaceClaim | None:
         with self._lock:
