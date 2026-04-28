@@ -66,6 +66,10 @@ services:
       BRIDGE_HARDHAT_RPC: ${BRIDGE_HARDHAT_RPC:-http://host.docker.internal:8545}
       BRIDGE_IOT_MARKET_ADDRESS: ${BRIDGE_IOT_MARKET_ADDRESS:-}
       BRIDGE_PUBLISHER_URL: http://publisher:8080
+      # Externally-reachable publisher URL the wallet uses (LAN IP).
+      # Required so the OID4VCI offer baked by /marketplace/claim
+      # surfaces a deeplink the phone can actually fetch.
+      BRIDGE_PUBLIC_PUBLISHER_URL: ${BRIDGE_PUBLIC_PUBLISHER_URL:-http://host.docker.internal:8080}
       BRIDGE_DATASET_DEFAULT: ${BRIDGE_DATASET_DEFAULT:-home/env/temperature}
     extra_hosts:
       - "host.docker.internal:host-gateway"
