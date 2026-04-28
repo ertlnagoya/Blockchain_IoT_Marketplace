@@ -433,3 +433,28 @@ Covers:
 - `dataset_id`: normalized logical data category (for policy matching)
 - `purpose`: reason of sharing (example: `research`)
 - `PEP`: policy enforcement point (planned in Phase 3)
+
+## Roadmap (Phase 2 follow-on, **Stage 8**)
+
+Phase 2 lands 5 VC kinds, 4 token kinds, and 7 hands-on stages
+([overview](https://iw3ip.github.io/design/vc-architecture-overview/)).
+The trust model still has off-chain assumptions that the next stage
+should harden:
+
+- **Stage 8a — EIP-712 binding** (eth_addr ↔ did:jwk anti-impersonation):
+  replace the bridge-trusted `eth_did_bound` audit row with a
+  buyer-signed EIP-712 assertion. Removes bridge as a trusted party.
+- **Stage 8b — On-chain seller guard**: extend `IoTMarket` (or fork
+  to `IoTMarketV2`) so `registerMerchandise()` requires a SellerToken
+  proof on chain. Closes the bypass where contract calls don't go
+  through the publisher.
+- **Stage 8c — VC revocation**: serve W3C Status List 2021 from
+  `/verifier/status` and consult it during presentation. Lets
+  ConsentVC / SellerVC be retracted before they expire.
+- **Stage 8d — On-chain VC verification**: prove SellerVC / ConsentVC
+  validity on chain via signature relay or ZK, so Solidity contracts
+  can read off the VC layer without trusting an off-chain publisher.
+
+Recommended order: 8a → 8c → 8b → 8d (each unblocks the next).
+Track this work via the `stage8` label / project board; full specs
+land at `iw3ip.github.io/docs/design/stage8-*.md` when work begins.
