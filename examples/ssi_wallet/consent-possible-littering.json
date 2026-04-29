@@ -1,0 +1,39 @@
+{
+  "id": "consent-possible-littering",
+  "name": "Consent VC for home/event/possible_littering",
+  "purpose": "Verify the wallet holds a ConsentVC allowing webcam littering event sharing.",
+  "iw3ip_dataset_id": "home/event/possible_littering",
+  "iw3ip_vc_kind": "ConsentVC",
+  "input_descriptors": [
+    {
+      "id": "consent_vc_possible_littering",
+      "name": "ConsentVC (possible_littering)",
+      "format": {
+        "vc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        }
+      },
+      "constraints": {
+        "fields": [
+          {
+            "path": ["$.vct"],
+            "filter": {
+              "type": "string",
+              "const": "https://iw3ip.example/credentials/ConsentVC/v1"
+            }
+          },
+          {
+            "path": ["$.dataset_id"],
+            "filter": {
+              "type": "string",
+              "const": "home/event/possible_littering"
+            }
+          },
+          { "path": ["$.allowed_purposes"], "filter": { "type": "array" } },
+          { "path": ["$.subject_id"] }
+        ]
+      }
+    }
+  ]
+}
