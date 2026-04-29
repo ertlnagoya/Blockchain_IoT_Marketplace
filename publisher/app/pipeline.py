@@ -77,6 +77,22 @@ class MessageProcessor:
             "publisher_id": self.publisher_id,
         }
 
+        # Stage T (case alpha) — hoist trust-tier-relevant media fields
+        # (image_cid / video_cid / video_duration_sec) to the envelope's
+        # top level. /platform/data's allowed_views projection filters
+        # those keys per tier; without this hoist, /simulate/publish
+        # buries them inside `payload.payload.data` and the projection
+        # never bites.
+        for _media_key in ("image_cid", "video_cid", "video_duration_sec"):
+            if not isinstance(payload, dict):
+                break
+            if _media_key in payload:
+                envelope.setdefault(_media_key, payload[_media_key])
+                continue
+            inner = payload.get("data")
+            if isinstance(inner, dict) and _media_key in inner:
+                envelope.setdefault(_media_key, inner[_media_key])
+
         try:
             self.platform_client.send(envelope)
             self.audit_repo.write(

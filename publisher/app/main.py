@@ -404,10 +404,18 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         # Reserve an Offer entry so /issuer/token can find the
         # pre_authorized_code we just minted. M3: PurchaseViewerVC
         # binds merchandise + tx + buyer_eth_addr to the issued credential.
+        # Stage T (case alpha) — pick a tier-aware credential_configuration_id
+        # so the wallet renders three distinct cards (Full / Image / Event-only).
+        from publisher.app.ssi.issuer_routes import (
+            purchase_viewer_config_id_for_access_level,
+        )
+        tier_cfg_id = purchase_viewer_config_id_for_access_level(
+            claim.access_level
+        )
         ssi_state._offers[claim.pre_authorized_code] = (  # noqa: SLF001
             __import__("publisher.app.ssi.state", fromlist=["Offer"]).Offer(
                 pre_authorized_code=claim.pre_authorized_code,
-                credential_config_id="PurchaseViewerVC",
+                credential_config_id=tier_cfg_id,
                 dataset_id=claim.dataset_id,
                 purpose="read",
                 allowed_purposes=["read"],
@@ -432,9 +440,18 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         )
 
     public_base = externally_reachable_base_url(request, ssi_settings.issuer_base_url)
+    # Stage T (case alpha) — point the deeplink at the tier-aware config id
+    # so the wallet labels the resulting card as Full / Image / Event-only.
+    if created:
+        deeplink_cfg_id = tier_cfg_id  # noqa: F821 — defined in `if created` above
+    else:
+        from publisher.app.ssi.issuer_routes import (
+            purchase_viewer_config_id_for_access_level as _resolve_cfg,
+        )
+        deeplink_cfg_id = _resolve_cfg(claim.access_level)
     co = {
         "credential_issuer": public_base,
-        "credential_configuration_ids": ["PurchaseViewerVC"],
+        "credential_configuration_ids": [deeplink_cfg_id],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": claim.pre_authorized_code,
