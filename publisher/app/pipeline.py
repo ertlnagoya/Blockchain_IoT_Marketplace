@@ -77,13 +77,21 @@ class MessageProcessor:
             "publisher_id": self.publisher_id,
         }
 
-        # Stage T (case alpha) — hoist trust-tier-relevant media fields
-        # (image_cid / video_cid / video_duration_sec) to the envelope's
-        # top level. /platform/data's allowed_views projection filters
-        # those keys per tier; without this hoist, /simulate/publish
-        # buries them inside `payload.payload.data` and the projection
-        # never bites.
-        for _media_key in ("image_cid", "video_cid", "video_duration_sec"):
+        # Stage T (case alpha + B) — hoist trust-tier-relevant media
+        # fields to the envelope's top level. /platform/data's
+        # allowed_views projection filters these keys per tier; without
+        # this hoist /simulate/publish would bury them inside
+        # `payload.payload.data` and the projection never bites.
+        # `image_url` / `video_url` are case B (publisher-hosted media
+        # gateway); `image_cid` / `video_cid` are case alpha + the
+        # forthcoming case C (real IPFS).
+        for _media_key in (
+            "image_cid",
+            "image_url",
+            "video_cid",
+            "video_url",
+            "video_duration_sec",
+        ):
             if not isinstance(payload, dict):
                 break
             if _media_key in payload:

@@ -15,6 +15,7 @@ from publisher.app.models import SimulatePublishRequest
 from publisher.app.mqtt_subscriber import MQTTSubscriber
 from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
+from publisher.app.media_routes import build_router as build_media_router
 from publisher.app.ssi import issuer_routes, verifier_routes
 from publisher.app.ssi.config import SSISettings
 from publisher.app.ssi.keys import IssuerKeyStore
@@ -97,6 +98,15 @@ app.include_router(
             audit_repo=audit_repo,
             pex_client=ssi_pex_client,
         )
+    )
+)
+# Stage T (case B): media gateway. POST /media/upload writes the blob,
+# GET /media/<sha>.<ext> serves it. Tier-aware projection in
+# /platform/data already filters image_url / video_url per tier.
+app.include_router(
+    build_media_router(
+        store_path=settings.media_store_path,
+        public_base_url=settings.media_public_base_url,
     )
 )
 
@@ -295,14 +305,19 @@ def platform_data(
     # never leak.
     allowed_views = vt.allowed_views or ["event"]
 
+    # Stage T (case B): media URLs (image_url / video_url) are filtered
+    # alongside the legacy CID keys. The two coexist so the same row can
+    # carry both an IPFS CID (Stage T case C) and a publisher-hosted
+    # URL during migration.
+    _IMAGE_KEYS = ("image_cid", "image_url")
+    _VIDEO_KEYS = ("video_cid", "video_url", "video_duration_sec")
+
     def _project(row: dict) -> dict:
         out: dict = {}
         for k, v in row.items():
-            if k == "image_cid" and "image" not in allowed_views:
+            if k in _IMAGE_KEYS and "image" not in allowed_views:
                 continue
-            if k == "video_cid" and "video" not in allowed_views:
-                continue
-            if k == "video_duration_sec" and "video" not in allowed_views:
+            if k in _VIDEO_KEYS and "video" not in allowed_views:
                 continue
             out[k] = v
         return out
