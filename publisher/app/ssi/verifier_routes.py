@@ -139,9 +139,10 @@ def _local_pex_fallback(
                     "claims": claims,
                     "holder_did": None,
                 }
-    # SellerVC isn't dataset-scoped; the dataset check happens at
-    # /marketplace/register time against licensed_datasets.
-    if vc_kind != "SellerVC":
+    # SellerVC / DataUserVC aren't dataset-scoped; the dataset check
+    # happens at /marketplace/register time (SellerVC) or never
+    # (DataUserVC, which only feeds trust evaluation).
+    if vc_kind not in ("SellerVC", "DataUserVC"):
         if claims.get("dataset_id") != dataset_id:
             return {"verified": False, "reason": "dataset_mismatch", "claims": claims, "holder_did": None}
     if vc_kind in ("ViewerVC", "PurchaseViewerVC"):
@@ -157,6 +158,17 @@ def _local_pex_fallback(
             return {"verified": False, "reason": "missing_seller_id", "claims": claims, "holder_did": None}
         if not claims.get("licensed_datasets"):
             return {"verified": False, "reason": "missing_licensed_datasets", "claims": claims, "holder_did": None}
+    elif vc_kind == "DataUserVC":
+        # All five trust attributes must be present so trust_score can be
+        # computed deterministically. legalCompliance / misuseRecord are
+        # booleans; entityType / purpose / dataHandlingPolicy are strings.
+        for k in ("entityType", "purpose", "dataHandlingPolicy"):
+            if not claims.get(k):
+                return {"verified": False, "reason": f"missing_{k}", "claims": claims, "holder_did": None}
+        if "legalCompliance" not in claims:
+            return {"verified": False, "reason": "missing_legalCompliance", "claims": claims, "holder_did": None}
+        if "misuseRecord" not in claims:
+            return {"verified": False, "reason": "missing_misuseRecord", "claims": claims, "holder_did": None}
     else:
         allowed = claims.get("allowed_purposes", [])
         if purpose not in allowed:
@@ -199,9 +211,9 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         purpose: str = Query("read"),
         vc_kind: str = Query("ConsentVC"),
     ):
-        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC", "SellerVC"):
+        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC", "SellerVC", "DataUserVC"):
             raise HTTPException(status_code=400, detail=f"unknown vc_kind: {vc_kind}")
-        if vc_kind != "SellerVC" and dataset_id == "*":
+        if vc_kind not in ("SellerVC", "DataUserVC") and dataset_id == "*":
             raise HTTPException(status_code=400, detail="dataset_id required for this vc_kind")
         match = deps.definitions.find_for_dataset(dataset_id, vc_kind=vc_kind)
         if not match:
@@ -241,6 +253,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             "ServiceVC": "IW3IP Service VC を提示",
             "PurchaseViewerVC": "IW3IP Purchase Viewer VC を提示",
             "SellerVC": "IW3IP Seller VC を提示",
+            "DataUserVC": "IW3IP Data User VC を提示",
         }.get(vc_kind, "IW3IP Consent VC を提示")
         html = render_qr_page(
             title=title,
@@ -302,6 +315,24 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                         "claims": [
                             {"path": ["seller_id"]},
                             {"path": ["licensed_datasets"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
+        elif req.vc_kind == "DataUserVC":
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "data_user_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/DataUserVC/v1"]},
+                        "claims": [
+                            {"path": ["entityType"]},
+                            {"path": ["purpose"]},
+                            {"path": ["legalCompliance"]},
+                            {"path": ["dataHandlingPolicy"]},
+                            {"path": ["misuseRecord"]},
                             {"path": ["subject_id"]},
                         ],
                     }
@@ -405,8 +436,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         # Phase 2/3 belt-and-braces purpose/action check after PEX
         claims = result.get("claims") or {}
         if verified:
-            # SellerVC isn't dataset-bound; skip the dataset_id check
-            if req.vc_kind != "SellerVC" and claims.get("dataset_id") not in (None, req.dataset_id):
+            # SellerVC / DataUserVC aren't dataset-bound; skip dataset_id check
+            if (
+                req.vc_kind not in ("SellerVC", "DataUserVC")
+                and claims.get("dataset_id") not in (None, req.dataset_id)
+            ):
                 verified = False
                 reason = "dataset_mismatch"
             elif req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
@@ -426,6 +460,14 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 elif not claims.get("licensed_datasets"):
                     verified = False
                     reason = "missing_licensed_datasets"
+            elif req.vc_kind == "DataUserVC":
+                # Only check that the 5 attributes are present here.
+                # Trust score is computed at the marketplace claim step.
+                for k in ("entityType", "purpose", "dataHandlingPolicy"):
+                    if not claims.get(k):
+                        verified = False
+                        reason = f"missing_{k}"
+                        break
             else:
                 allowed = claims.get("allowed_purposes")
                 if allowed is not None and req.purpose not in allowed:
@@ -447,14 +489,27 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         )
         if verified:
             if req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
+                # Stage T (case alpha): pull allowed_views from the VC's
+                # claims when present (PurchaseViewerVC) and propagate it
+                # to the ViewerToken; this gates the response projection
+                # at /platform/data. Defaults to ["event"] for VCs
+                # without the claim (back-compat).
+                allowed_views_claim = claims.get("allowed_views")
+                token_views = (
+                    list(allowed_views_claim)
+                    if isinstance(allowed_views_claim, list) and allowed_views_claim
+                    else ["event"]
+                )
                 vt = deps.state.create_viewer_token(
                     dataset_id=req.dataset_id,
                     holder_did=holder_did,
+                    allowed_views=token_views,
                 )
                 logger.info(
-                    "viewer_token_issued vc_kind=%s jti=%s token=%s dataset=%s ttl=%ss",
+                    "viewer_token_issued vc_kind=%s jti=%s token=%s dataset=%s ttl=%ss views=%s",
                     req.vc_kind, vt.jti, vt.token, vt.dataset_id,
                     int(vt.expires_at - vt.issued_at),
+                    "+".join(vt.allowed_views),
                 )
                 resp: dict = {
                     "status": "allowed",
@@ -463,6 +518,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     "viewer_token": vt.token,
                     "viewer_token_jti": vt.jti,
                     "expires_in": int(vt.expires_at - vt.issued_at),
+                    "allowed_views": vt.allowed_views,
                 }
                 # Surface marketplace context in the response so the
                 # iot-market-ui flow (M5) can correlate without re-decoding
@@ -493,6 +549,29 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     "seller_id": claims.get("seller_id"),
                     "licensed_datasets": seller_st.licensed_datasets,
                     "expires_in": int(seller_st.expires_at - seller_st.issued_at),
+                }
+            if req.vc_kind == "DataUserVC":
+                # No token minted: DataUserVC presentation is informational
+                # (the publisher just confirms it can compute the trust score
+                # and reports the result). Subsequent ViewerToken / Purchase
+                # flows pick up the trust evaluation via /marketplace/claim.
+                from publisher.app.ssi.trust_score import evaluate_from_claims
+                trust = evaluate_from_claims(claims)
+                logger.info(
+                    "data_user_vc_verified holder=%s entity=%s purpose=%s trust=%s level=%s",
+                    holder_did,
+                    claims.get("entityType"),
+                    claims.get("purpose"),
+                    trust.trust_score,
+                    trust.access_level,
+                )
+                return {
+                    "status": "allowed",
+                    "vc_kind": "DataUserVC",
+                    "trust_score": trust.trust_score,
+                    "access_level": trust.access_level,
+                    "allowed_views": trust.allowed_views,
+                    "holder_did": holder_did,
                 }
             if req.vc_kind == "ServiceVC":
                 st = deps.state.create_service_token(

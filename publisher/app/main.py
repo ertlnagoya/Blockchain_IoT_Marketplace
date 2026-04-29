@@ -287,6 +287,28 @@ def platform_data(
         status = 401 if reason in ("unknown", "expired") else 403
         raise HTTPException(status_code=status, detail=f"viewer_token_{reason}")
     rows = [r for r in app.state.ingested if r.get("dataset_id") == dataset_id]
+
+    # Stage T (case alpha): project each row according to the
+    # ViewerToken's allowed_views. Tier 1 (event) hides image_cid /
+    # video_cid; Tier 2 (image) reveals image_cid; Tier 3 (video)
+    # reveals both. This is a strict allowlist: unknown view keys
+    # never leak.
+    allowed_views = vt.allowed_views or ["event"]
+
+    def _project(row: dict) -> dict:
+        out: dict = {}
+        for k, v in row.items():
+            if k == "image_cid" and "image" not in allowed_views:
+                continue
+            if k == "video_cid" and "video" not in allowed_views:
+                continue
+            if k == "video_duration_sec" and "video" not in allowed_views:
+                continue
+            out[k] = v
+        return out
+
+    rows = [_project(r) for r in rows]
+
     audit_repo.write(
         AuditLogRecord(
             ts=datetime.now(timezone.utc).isoformat(),
@@ -294,7 +316,10 @@ def platform_data(
             subject_did=vt.holder_did or "unknown",
             dataset_id=vt.dataset_id,
             purpose="read",
-            reason=f"viewer_token_used:{vt.jti}:{vt.read_count}",
+            reason=(
+                f"viewer_token_used:{vt.jti}:{vt.read_count}"
+                f":views={'+'.join(allowed_views) if allowed_views else 'none'}"
+            ),
             message_hash="",
             raw_topic="platform/data",
             holder_did=vt.holder_did,
@@ -314,6 +339,7 @@ def platform_data(
         "count": len(rows),
         "read_count": vt.read_count,
         "seller_did": seller_did or ("unknown" if merchandise else None),
+        "allowed_views": allowed_views,
         "rows": rows,
     }
 
@@ -343,12 +369,30 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         if not body.get(f):
             raise HTTPException(status_code=400, detail=f"missing_field:{f}")
 
+    # Stage T (case alpha): if the bridge / iot-market-ui includes the
+    # buyer's DataUserVC trust attributes in the claim body, evaluate
+    # the trust score now and bake the resulting allowed_views into the
+    # claim. Without these, allowed_views defaults to ["event"] (Tier 1).
+    allowed_views: list[str] | None = None
+    trust_score: int | None = None
+    access_level: str | None = None
+    data_user_attrs = body.get("data_user_attrs")
+    if isinstance(data_user_attrs, dict) and data_user_attrs:
+        from publisher.app.ssi.trust_score import evaluate_from_claims
+        evaluation = evaluate_from_claims(data_user_attrs)
+        allowed_views = list(evaluation.allowed_views)
+        trust_score = evaluation.trust_score
+        access_level = evaluation.access_level
+
     claim, created = ssi_state.create_marketplace_claim(
         merchandise_address=body["merchandise_address"],
         buyer_eth_addr=body["buyer_eth_addr"],
         tx_hash=body["tx_hash"],
         dataset_id=body["dataset_id"],
         purchase_amount_wei=str(body.get("purchase_amount_wei", "0")),
+        allowed_views=allowed_views,
+        trust_score=trust_score,
+        access_level=access_level,
     )
 
     # Stitch the claim's pre_authorized_code into a credential offer that
