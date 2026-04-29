@@ -414,3 +414,136 @@ def test_platform_data_hides_image_and_video_for_tier_1(client):
     assert "image_cid" not in row
     assert "video_cid" not in row
     assert row["data"]["value"] == 3
+
+
+# ---- Stage T case alpha bug-fix regressions ----
+
+
+def test_issuer_offer_with_claim_id_reuses_claim_pre_auth_code(client):
+    """Regression for the iPhone e2e bug where /issuer/offer?type=PurchaseViewerVC&claim_id=...
+    silently minted a fresh, claim-less Offer. The wallet would then hand
+    back a PurchaseViewerVC with no merchandise_address / buyer_eth_addr /
+    tx_hash / allowed_views, breaking the marketplace bridge."""
+    tc, _ = client
+    body = {
+        "merchandise_address": "0x" + "77" * 20,
+        "buyer_eth_addr": "0x" + "88" * 20,
+        "tx_hash": "0x" + "99" * 32,
+        "dataset_id": "home/env/temperature",
+        "data_user_attrs": {
+            "entityType": "GovernmentOrganization",
+            "purpose": "research",
+            "legalCompliance": True,
+            "dataHandlingPolicy": "ISO27001",
+            "misuseRecord": False,
+        },
+    }
+    claim_resp = tc.post("/marketplace/claim", json=body).json()
+    claim_id = claim_resp["claim_id"]
+    deeplink_code = json.loads(__import__("urllib.parse").parse.unquote(
+        claim_resp["deeplink"].split("=", 1)[1]
+    ))["grants"]["urn:ietf:params:oauth:grant-type:pre-authorized_code"][
+        "pre-authorized_code"
+    ]
+
+    offer = tc.get(
+        "/issuer/offer",
+        params={
+            "type": "PurchaseViewerVC",
+            "dataset_id": "home/env/temperature",
+            "purpose": "read",
+            "claim_id": claim_id,
+        },
+        headers={"accept": "application/json"},
+    ).json()
+    assert offer["pre_authorized_code"] == deeplink_code, (
+        "the offer URL must reuse the claim's pre_authorized_code; "
+        f"got {offer['pre_authorized_code']!r} != claim {deeplink_code!r}"
+    )
+
+
+def test_issuer_offer_unknown_claim_id_404(client):
+    tc, _ = client
+    r = tc.get(
+        "/issuer/offer",
+        params={
+            "type": "PurchaseViewerVC",
+            "dataset_id": "home/env/temperature",
+            "purpose": "read",
+            "claim_id": "nope-no-such-claim",
+        },
+        headers={"accept": "application/json"},
+    )
+    assert r.status_code == 404
+    assert "unknown claim_id" in r.json()["detail"]
+
+
+def test_purchase_viewer_vc_includes_subject_id(client):
+    """Regression for "No Available Credential" in iw3ip-wallet: the
+    verifier DCQL requires `subject_id`, so the issuer must bake the
+    holder DID into the credential plain claims."""
+    tc, _ = client
+    body = {
+        "merchandise_address": "0x" + "aa" * 20,
+        "buyer_eth_addr": "0x" + "bb" * 20,
+        "tx_hash": "0x" + "cc" * 32,
+        "dataset_id": "home/env/temperature",
+    }
+    claim_resp = tc.post("/marketplace/claim", json=body).json()
+    pre_auth = json.loads(__import__("urllib.parse").parse.unquote(
+        claim_resp["deeplink"].split("=", 1)[1]
+    ))["grants"]["urn:ietf:params:oauth:grant-type:pre-authorized_code"][
+        "pre-authorized_code"
+    ]
+
+    priv, pub, holder_did = _holder()
+    token = tc.post(
+        "/issuer/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+            "pre-authorized_code": pre_auth,
+        },
+    ).json()
+    proof = _proof(priv, pub, token["c_nonce"], "http://testserver")
+    cred = tc.post(
+        "/issuer/credential",
+        headers={"Authorization": f"Bearer {token['access_token']}"},
+        json={
+            "format": "vc+sd-jwt",
+            "vct": "https://iw3ip.example/credentials/PurchaseViewerVC/v1",
+            "proof": {"proof_type": "jwt", "jwt": proof},
+        },
+    ).json()
+
+    # The SD-JWT VC's body claim set is recoverable by parsing the
+    # <issuer-jwt>~<disclosure>~... compact form.
+    sdjwt = cred["credential"]
+    parts = sdjwt.split("~")
+    issuer_jwt_payload = parts[0].split(".")[1]
+    import base64
+    pad = "=" * (-len(issuer_jwt_payload) % 4)
+    body_claims = json.loads(
+        base64.urlsafe_b64decode(issuer_jwt_payload + pad)
+    )
+    # Disclosures (one per ~ segment after the issuer JWT, except the
+    # trailing kb-jwt slot which may be empty in this fixture).
+    disclosed: dict = {}
+    for d in parts[1:-1] if parts[-1] == "" else parts[1:]:
+        if not d:
+            continue
+        pad = "=" * (-len(d) % 4)
+        try:
+            arr = json.loads(base64.urlsafe_b64decode(d + pad))
+            if isinstance(arr, list) and len(arr) >= 3:
+                disclosed[arr[1]] = arr[2]
+        except Exception:
+            continue
+
+    # subject_id must appear either as a top-level claim or as a
+    # disclosure, and must equal holder_did.
+    sid = body_claims.get("subject_id") or disclosed.get("subject_id")
+    assert sid == holder_did, (
+        f"PurchaseViewerVC must carry subject_id == holder_did "
+        f"({holder_did!r}); got top={body_claims.get('subject_id')!r}, "
+        f"disclosed={disclosed.get('subject_id')!r}"
+    )

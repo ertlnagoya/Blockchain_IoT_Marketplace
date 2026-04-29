@@ -258,6 +258,17 @@ class SSIStateStore:
         with self._lock:
             return self._offers.get(token.pre_authorized_code)
 
+    def get_offer_by_code(self, pre_authorized_code: str) -> Offer | None:
+        """Lookup an Offer by its pre_authorized_code without consuming it.
+
+        Used by /issuer/offer when ``claim_id`` is supplied so a wallet
+        re-opening the QR/deeplink lands on the same Offer the bridge
+        already stashed at /marketplace/claim time, rather than minting
+        a fresh, claim-less Offer.
+        """
+        with self._lock:
+            return self._offers.get(pre_authorized_code)
+
     # ---- OID4VP ----
 
     def create_verification_request(

@@ -16,7 +16,7 @@ from publisher.app.ssi.did_jwk import did_jwk_from_public_jwk, public_jwk_from_d
 from publisher.app.ssi.html import render_qr_page
 from publisher.app.ssi.keys import IssuerKeyStore
 from publisher.app.ssi.sdjwt import issue_sd_jwt_vc
-from publisher.app.ssi.state import SSIStateStore
+from publisher.app.ssi.state import Offer, SSIStateStore
 from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
@@ -281,6 +281,12 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             default=None,
             description="Comma-separated dataset_ids the SellerVC licenses",
         ),
+        # Stage T (case alpha bug fix): when the bridge / iot-market-ui
+        # already minted a MarketplaceClaim and stashed an Offer keyed by
+        # claim.pre_authorized_code, /issuer/offer must reuse THAT offer
+        # rather than create a fresh one — otherwise the issuance loses
+        # the binding to merchandise / buyer / tx_hash / allowed_views.
+        claim_id: str | None = Query(default=None),
         # Stage T (case alpha): DataUserVC inputs (mirrors
         # ssi/contracts/DataUserVerifier.sol)
         entity_type: str | None = Query(default=None),
@@ -355,15 +361,42 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             allowed = ["read"]
             page_title = "IW3IP Purchase Viewer VC を発行"
 
-        offer = deps.state.create_offer(
-            credential_config_id=config_id,
-            dataset_id=dataset_id or "",
-            purpose=purpose,
-            allowed_purposes=allowed,
-            vc_kind=type,
-            seller_id=offer_seller_id,
-            data_user_attrs=offer_data_user_attrs,
-        )
+        offer: Offer | None = None
+        # Stage T (case alpha bug fix): for PurchaseViewerVC, prefer
+        # reusing the Offer that /marketplace/claim already minted and
+        # stashed under claim.pre_authorized_code. Without this the wallet
+        # would receive a fresh Offer whose pre_authorized_code does not
+        # round-trip back to any MarketplaceClaim, so the issuance branch
+        # in /issuer/credential cannot fold merchandise / buyer / tx_hash
+        # / allowed_views into the issued PurchaseViewerVC.
+        if type == "PurchaseViewerVC" and claim_id:
+            mc = deps.state.get_marketplace_claim(claim_id)
+            if not mc:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"unknown claim_id: {claim_id}",
+                )
+            existing = deps.state.get_offer_by_code(mc.pre_authorized_code)
+            if existing is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"claim {claim_id} has no associated Offer; "
+                        "the bridge / iot-market-ui must POST /marketplace/claim "
+                        "before the wallet fetches /issuer/offer"
+                    ),
+                )
+            offer = existing
+        if offer is None:
+            offer = deps.state.create_offer(
+                credential_config_id=config_id,
+                dataset_id=dataset_id or "",
+                purpose=purpose,
+                allowed_purposes=allowed,
+                vc_kind=type,
+                seller_id=offer_seller_id,
+                data_user_attrs=offer_data_user_attrs,
+            )
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         co = _credential_offer(public_base, offer.pre_authorized_code, config_id)
         deeplink = (
@@ -475,6 +508,10 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             plain_claims = {
                 "dataset_id": offer.dataset_id,
                 "allowed_actions": offer.allowed_purposes,
+                # Required by the verifier DCQL for PurchaseViewerVC; the
+                # holder DID doubles as the credential subject id so a
+                # wallet's PEX engine can match `path: ["subject_id"]`.
+                "subject_id": holder_did,
                 "iw3ip_issuer": deps.settings.issuer_id,
             }
             if claim:
