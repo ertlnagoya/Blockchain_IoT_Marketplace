@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     audit_db_path: str = "audit/audit.db"
     consent_store_path: str | None = None
 
+    # Stage T (case B): static directory the media gateway writes uploaded
+    # image/video blobs into and serves them from at /media/<sha256>.<ext>.
+    # Production callers (docker compose) should override this to a real
+    # volume mount such as /data/media; the relative default is so the
+    # publisher boots fine in the test environment without sudo.
+    media_store_path: str = "publisher/data/media"
+    # Public base URL the wallet / browser uses to GET /media/<name>. When
+    # left empty we mint a relative path so the wallet/browser inherits the
+    # same origin it fetched the platform data from.
+    media_public_base_url: str = ""
+
     # Stage 7 (case C): when set, /marketplace/register verifies that
     # Merchandise.getOwner() == seller_eth_addr against this RPC. Leave
     # unset in tests/dev to skip the check (and in audit log we'll mark

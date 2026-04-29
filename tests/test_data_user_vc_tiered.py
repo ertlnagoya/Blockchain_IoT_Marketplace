@@ -10,6 +10,7 @@ Verifies:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -119,6 +120,10 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("MQTT_BROKER_HOST", "localhost")
     monkeypatch.setenv("MQTT_TOPICS", "")
     monkeypatch.setenv("SSI_PEX_SIDECAR_URL", "http://127.0.0.1:1")
+    # Stage T (case B): keep the media gateway store inside tmp_path so
+    # the test never writes to /data/media on the host.
+    monkeypatch.setenv("MEDIA_STORE_PATH", str(tmp_path / "media"))
+    monkeypatch.setenv("MEDIA_PUBLIC_BASE_URL", "")
 
     import importlib
     import publisher.app.main as pm
@@ -204,7 +209,7 @@ def _proof(priv, pub, nonce, aud):
     return h + "." + p + "." + _b64u(sig)
 
 
-def _purchase_viewer_token(tc, *, allowed_views_in_claim: list[str]):
+def _purchase_viewer_token(tc, *, allowed_views_in_claim: list[str], tx_seed: str = "66"):
     """End-to-end: claim with given views → receive PurchaseViewerVC →
     present → returned ViewerToken should carry allowed_views."""
     # Use trust_score-derived allowed_views via data_user_attrs.
@@ -231,7 +236,7 @@ def _purchase_viewer_token(tc, *, allowed_views_in_claim: list[str]):
     body: dict = {
         "merchandise_address": "0x" + "44" * 20,
         "buyer_eth_addr": "0x" + "55" * 20,
-        "tx_hash": "0x" + "66" * 32,
+        "tx_hash": "0x" + tx_seed * 32,
         "dataset_id": "home/env/temperature",
     }
     if attrs:
@@ -692,3 +697,185 @@ def test_purchase_viewer_vc_includes_subject_id(client):
         f"({holder_did!r}); got top={body_claims.get('subject_id')!r}, "
         f"disclosed={disclosed.get('subject_id')!r}"
     )
+
+
+# ---- Stage T case B: media gateway + URL-based tier projection ----
+
+
+def _tiny_jpeg() -> bytes:
+    # 1×1 white-pixel JPEG (smallest legal JPEG; 125 bytes).
+    return bytes.fromhex(
+        "ffd8ffe000104a46494600010100000100010000ffdb004300080606070605"
+        "08070707090908090a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0affc0000b08"
+        "00010001010100ffc4001500010100000000000000000000000000000007ff"
+        "c4001f10000103030301010100000000000000010002030405060708ffd900"
+    )
+
+
+def _multipart_body(filename: str, content_type: str, blob: bytes) -> tuple[bytes, str]:
+    boundary = "----iw3ip-test-boundary"
+    crlf = b"\r\n"
+    parts = [
+        f"--{boundary}".encode(),
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"'.encode(),
+        f"Content-Type: {content_type}".encode(),
+        b"",
+        blob,
+        f"--{boundary}--".encode(),
+        b"",
+    ]
+    body = crlf.join(parts)
+    return body, f"multipart/form-data; boundary={boundary}"
+
+
+def test_media_upload_then_serve(client):
+    tc, _ = client
+    blob = _tiny_jpeg()
+    body, ct = _multipart_body("frame.jpg", "image/jpeg", blob)
+    r = tc.post("/media/upload", content=body, headers={"Content-Type": ct})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["sha256"] == hashlib.sha256(blob).hexdigest()
+    assert j["content_type"] == "image/jpeg"
+    assert j["byte_size"] == len(blob)
+    assert j["url"].endswith(f"/media/{j['sha256']}.jpg")
+
+    # The published URL should resolve. TestClient sees the full origin.
+    relative = "/media/" + j["sha256"] + ".jpg"
+    r2 = tc.get(relative)
+    assert r2.status_code == 200
+    assert r2.content == blob
+    assert r2.headers["content-type"].startswith("image/jpeg")
+
+
+def test_media_upload_dedupes_on_sha256(client):
+    tc, _ = client
+    blob = _tiny_jpeg()
+    body, ct = _multipart_body("a.jpg", "image/jpeg", blob)
+    r1 = tc.post("/media/upload", content=body, headers={"Content-Type": ct}).json()
+    body2, _ = _multipart_body("b-different-name.jpg", "image/jpeg", blob)
+    r2 = tc.post("/media/upload", content=body2, headers={"Content-Type": ct}).json()
+    assert r1["sha256"] == r2["sha256"]
+    assert r1["url"] == r2["url"]
+
+
+def test_media_upload_rejects_unknown_extension(client):
+    tc, _ = client
+    body, ct = _multipart_body("payload.exe", "application/octet-stream", b"\x00" * 32)
+    r = tc.post("/media/upload", content=body, headers={"Content-Type": ct})
+    assert r.status_code == 415
+
+
+def test_media_get_rejects_path_traversal(client):
+    tc, _ = client
+    # urls with embedded slashes never match the path; this is a belt-and-braces check
+    r = tc.get("/media/..%2Fauth")
+    assert r.status_code in (400, 404)
+
+
+def test_platform_data_projects_image_url_video_url_per_tier(client):
+    """The Tier 2 / 3 buyer should see image_url; only Tier 3 should
+    additionally see video_url. Tier 1 sees neither."""
+    tc, pm = client
+    # Seed a row that uses URL-based media (case B), not CID-based.
+    pm.app.state.ingested.append({
+        "dataset_id": "home/env/temperature",
+        "event_type": "tick",
+        "data": {"value": 9},
+        "image_url": "http://testserver/media/aaaaaaa.jpg",
+        "video_url": "http://testserver/media/bbbbbbb.mp4",
+        "video_duration_sec": 4,
+    })
+
+    # Tier 3 — full
+    presented = _purchase_viewer_token(
+        tc, allowed_views_in_claim=["event", "image", "video"], tx_seed="71"
+    )
+    body = tc.get(
+        "/platform/data",
+        params={"dataset_id": "home/env/temperature"},
+        headers={"Authorization": f"Bearer {presented['viewer_token']}"},
+    ).json()
+    row = body["rows"][0]
+    assert row.get("image_url", "").endswith("/aaaaaaa.jpg")
+    assert row.get("video_url", "").endswith("/bbbbbbb.mp4")
+    assert row.get("video_duration_sec") == 4
+
+    # Tier 2 — image only (different tx_seed → fresh claim/offer)
+    presented2 = _purchase_viewer_token(
+        tc, allowed_views_in_claim=["event", "image"], tx_seed="72"
+    )
+    body2 = tc.get(
+        "/platform/data",
+        params={"dataset_id": "home/env/temperature"},
+        headers={"Authorization": f"Bearer {presented2['viewer_token']}"},
+    ).json()
+    row2 = body2["rows"][0]
+    assert row2.get("image_url", "").endswith("/aaaaaaa.jpg")
+    assert "video_url" not in row2
+    assert "video_duration_sec" not in row2
+
+
+def test_pipeline_hoists_image_url_video_url_to_top_level():
+    """/simulate/publish should hoist image_url / video_url out of the
+    payload exactly the same way it hoists image_cid / video_cid."""
+    from datetime import datetime, timezone, timedelta
+    from publisher.app.pipeline import MessageProcessor
+    from policy.engine import PolicyEngine
+    from policy.store import ConsentStore
+    from policy.models import ConsentVC
+    from audit.repository import SQLiteAuditRepository
+    import tempfile
+    import os
+
+    captured: list[dict] = []
+
+    class _Sink:
+        def send(self, env: dict) -> None:
+            captured.append(env)
+
+    with tempfile.TemporaryDirectory() as td:
+        cs = ConsentStore(os.path.join(td, "c.json"))
+        now = datetime.now(timezone.utc)
+        cs.upsert(
+            ConsentVC(
+                vc_id="c-stage-t-b",
+                subject_did="did:example:park",
+                dataset_id="home/event/possible_littering",
+                allowed_purposes=["community_cleaning"],
+                retention_days=14,
+                reshare_allowed=False,
+                valid_from=now - timedelta(days=1),
+                valid_to=now + timedelta(days=30),
+                signature="x",
+            )
+        )
+        proc = MessageProcessor(
+            publisher_id="t",
+            default_purpose="community_cleaning",
+            consent_store=cs,
+            policy_engine=PolicyEngine(),
+            audit_repo=SQLiteAuditRepository(os.path.join(td, "a.db")),
+            platform_client=_Sink(),
+        )
+        result = proc.process_message(
+            "homeassistant/event/possible_littering",
+            {
+                "event_type": "possible_littering",
+                "ts": "2026-04-29T09:00:00Z",
+                "source": "edge_inference",
+                "image_url": "http://publisher:8080/media/aaa.jpg",
+                "data": {
+                    "video_url": "http://publisher:8080/media/bbb.mp4",
+                    "video_duration_sec": 4,
+                },
+            },
+            "community_cleaning",
+        )
+        assert result["status"] == "allowed", result
+        assert captured
+        env = captured[-1]
+        assert env.get("image_url") == "http://publisher:8080/media/aaa.jpg"
+        assert env.get("video_url") == "http://publisher:8080/media/bbb.mp4"
+        assert env.get("video_duration_sec") == 4

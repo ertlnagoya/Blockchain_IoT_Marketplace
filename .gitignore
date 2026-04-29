@@ -34,3 +34,6 @@ site/
 __pycache__/
 *.pyc
 .venv-ssi/
+
+# Stage T (case B): default media gateway store dir
+publisher/data/
