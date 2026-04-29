@@ -37,3 +37,14 @@ __pycache__/
 
 # Stage T (case B): default media gateway store dir
 publisher/data/
+
+# Stage T (case B) — provider_with_media.py auto-generates these
+# 1×1 fixture blobs at runtime; no need to track them.
+examples/hands_on/data_user_vc_tiered/fixtures/
+
+# Local-dev only — host IP / RPC URL are operator-specific.
+infra/.env
+
+# Home Assistant demo container's persistent volume; lives in the
+# repo only because docker-compose mounts it from the working tree.
+home-assistant-demo/
