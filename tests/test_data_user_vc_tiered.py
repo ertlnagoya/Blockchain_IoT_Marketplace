@@ -478,6 +478,151 @@ def test_issuer_offer_unknown_claim_id_404(client):
     assert "unknown claim_id" in r.json()["detail"]
 
 
+def test_pipeline_hoists_media_cids_to_top_level():
+    """Stage T (case alpha): /platform/data's allowed_views projection
+    only filters top-level keys. The pipeline must hoist image_cid /
+    video_cid / video_duration_sec out of the inbound payload so the
+    projection bites at Tier 2 / Tier 3.
+
+    Tested at the MessageProcessor level so the test does not depend on
+    a reachable platform/ingest endpoint.
+    """
+    from datetime import datetime, timezone, timedelta
+    from publisher.app.pipeline import MessageProcessor
+    from policy.engine import PolicyEngine
+    from policy.store import ConsentStore
+    from audit.repository import SQLiteAuditRepository
+    from policy.models import ConsentVC
+    import tempfile
+    import os
+
+    captured: list[dict] = []
+
+    class _FakePlatformClient:
+        def send(self, envelope: dict) -> None:
+            captured.append(envelope)
+
+    with tempfile.TemporaryDirectory() as td:
+        consent_store = ConsentStore(os.path.join(td, "consents.json"))
+        now = datetime.now(timezone.utc)
+        consent_store.upsert(
+            ConsentVC(
+                vc_id="c-tier-test",
+                subject_did="did:example:park",
+                dataset_id="home/event/possible_littering",
+                allowed_purposes=["community_cleaning"],
+                retention_days=14,
+                reshare_allowed=False,
+                valid_from=now - timedelta(days=1),
+                valid_to=now + timedelta(days=30),
+                signature="x",
+            )
+        )
+        audit_repo = SQLiteAuditRepository(os.path.join(td, "audit.db"))
+        proc = MessageProcessor(
+            publisher_id="test",
+            default_purpose="community_cleaning",
+            consent_store=consent_store,
+            policy_engine=PolicyEngine(),
+            audit_repo=audit_repo,
+            platform_client=_FakePlatformClient(),
+        )
+        result = proc.process_message(
+            "homeassistant/event/possible_littering",
+            {
+                "event_type": "possible_littering",
+                "ts": "2026-04-29T09:00:00Z",
+                "source": "edge_inference",
+                "image_cid": "QmTopLevelImage",
+                "data": {
+                    "video_cid": "QmNestedVideo",
+                    "video_duration_sec": 7,
+                },
+            },
+            "community_cleaning",
+        )
+        assert result["status"] == "allowed", result
+        assert captured, "platform_client.send was not called"
+        env = captured[-1]
+        assert env.get("image_cid") == "QmTopLevelImage", env
+        assert env.get("video_cid") == "QmNestedVideo", env
+        assert env.get("video_duration_sec") == 7, env
+
+
+def test_marketplace_claim_picks_tier_aware_config_id(client):
+    """Stage T (case alpha): the deeplink emitted by /marketplace/claim
+    must reference the tier-specific credential_configuration_id so the
+    wallet renders three distinct cards (Full / Image / Event-only)
+    rather than three identical "PurchaseViewerVC" entries."""
+    tc, _ = client
+
+    cases = [
+        (
+            {
+                "entityType": "GovernmentOrganization",
+                "purpose": "research",
+                "legalCompliance": True,
+                "dataHandlingPolicy": "ISO27001",
+                "misuseRecord": False,
+            },
+            "PurchaseViewerVC.full",
+        ),
+        (
+            {
+                "entityType": "Enterprise",
+                "purpose": "research",
+                "legalCompliance": True,
+                "dataHandlingPolicy": "ISO27001",
+                "misuseRecord": False,
+            },
+            "PurchaseViewerVC.access",
+        ),
+        (None, "PurchaseViewerVC.event"),
+    ]
+    for i, (attrs, expected_cfg_id) in enumerate(cases):
+        body: dict = {
+            "merchandise_address": f"0x{i:040x}",
+            "buyer_eth_addr": f"0x{(i+100):040x}",
+            "tx_hash": f"0x{(i+200):064x}",
+            "dataset_id": "home/env/temperature",
+        }
+        if attrs:
+            body["data_user_attrs"] = attrs
+        resp = tc.post("/marketplace/claim", json=body).json()
+        co = json.loads(__import__("urllib.parse").parse.unquote(
+            resp["deeplink"].split("=", 1)[1]
+        ))
+        assert co["credential_configuration_ids"] == [expected_cfg_id], (
+            f"case {i}: expected deeplink config_id {expected_cfg_id!r}, "
+            f"got {co['credential_configuration_ids']!r}"
+        )
+
+
+def test_issuer_metadata_lists_three_purchase_viewer_tiers(client):
+    tc, _ = client
+    md = tc.get("/.well-known/openid-credential-issuer").json()
+    cfgs = md["credential_configurations_supported"]
+    for cfg_id in (
+        "PurchaseViewerVC",
+        "PurchaseViewerVC.full",
+        "PurchaseViewerVC.access",
+        "PurchaseViewerVC.event",
+    ):
+        assert cfg_id in cfgs, cfgs.keys()
+        assert cfgs[cfg_id]["vct"] == "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
+    # The three tiered entries must have distinct display names so the
+    # wallet renders distinct cards.
+    names = {
+        cfg_id: cfgs[cfg_id]["display"][0]["name"]
+        for cfg_id in (
+            "PurchaseViewerVC.full",
+            "PurchaseViewerVC.access",
+            "PurchaseViewerVC.event",
+        )
+    }
+    assert len(set(names.values())) == 3, names
+
+
 def test_purchase_viewer_vc_includes_subject_id(client):
     """Regression for "No Available Credential" in iw3ip-wallet: the
     verifier DCQL requires `subject_id`, so the issuer must bake the

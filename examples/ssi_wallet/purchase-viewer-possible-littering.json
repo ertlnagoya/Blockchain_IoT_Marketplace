@@ -1,0 +1,41 @@
+{
+  "id": "purchase-viewer-possible-littering",
+  "name": "PurchaseViewer VC for home/event/possible_littering",
+  "purpose": "Verify the wallet holds a PurchaseViewerVC bound to a Merchandise.Purchase tx for the possible_littering dataset.",
+  "iw3ip_dataset_id": "home/event/possible_littering",
+  "iw3ip_vc_kind": "PurchaseViewerVC",
+  "input_descriptors": [
+    {
+      "id": "purchase_viewer_vc_possible_littering",
+      "name": "PurchaseViewerVC (possible_littering)",
+      "format": {
+        "vc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        },
+        "dc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        }
+      },
+      "constraints": {
+        "fields": [
+          {
+            "path": ["$.vct"],
+            "filter": {
+              "type": "string",
+              "const": "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
+            }
+          },
+          {
+            "path": ["$.dataset_id"],
+            "filter": {
+              "type": "string",
+              "const": "home/event/possible_littering"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
