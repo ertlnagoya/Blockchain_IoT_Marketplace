@@ -30,6 +30,8 @@ PURCHASE_VIEWER_VC_CONFIG_ID = "PurchaseViewerVC"
 PURCHASE_VIEWER_VCT = "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
 SELLER_VC_CONFIG_ID = "SellerVC"
 SELLER_VCT = "https://iw3ip.example/credentials/SellerVC/v1"
+DATA_USER_VC_CONFIG_ID = "DataUserVC"
+DATA_USER_VCT = "https://iw3ip.example/credentials/DataUserVC/v1"
 
 # Backwards-compatible aliases for code/tests that imported the originals.
 CREDENTIAL_CONFIG_ID = CONSENT_VC_CONFIG_ID
@@ -46,6 +48,7 @@ VC_KIND_TO_VCT = {
     "ServiceVC": SERVICE_VCT,
     "PurchaseViewerVC": PURCHASE_VIEWER_VCT,
     "SellerVC": SELLER_VCT,
+    "DataUserVC": DATA_USER_VCT,
 }
 VC_KIND_TO_CONFIG_ID = {
     "ConsentVC": CONSENT_VC_CONFIG_ID,
@@ -53,6 +56,7 @@ VC_KIND_TO_CONFIG_ID = {
     "ServiceVC": SERVICE_VC_CONFIG_ID,
     "PurchaseViewerVC": PURCHASE_VIEWER_VC_CONFIG_ID,
     "SellerVC": SELLER_VC_CONFIG_ID,
+    "DataUserVC": DATA_USER_VC_CONFIG_ID,
 }
 
 DEEPLINK_SCHEME = "openid-credential-offer://"
@@ -148,6 +152,24 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                 "claims": {
                     "dataset_id": {"display": [{"name": "Dataset ID"}]},
                     "allowed_actions": {"display": [{"name": "Allowed actions"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
+                },
+            },
+            DATA_USER_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": DATA_USER_VCT,
+                "scope": "DataUserVC",
+                "display": [
+                    {"name": "IW3IP Data User Credential", "locale": "en"},
+                    {"name": "IW3IP データ利用者クレデンシャル", "locale": "ja"},
+                ],
+                "claims": {
+                    "entityType": {"display": [{"name": "Entity type"}]},
+                    "purpose": {"display": [{"name": "Purpose"}]},
+                    "legalCompliance": {"display": [{"name": "Legal compliance"}]},
+                    "dataHandlingPolicy": {"display": [{"name": "Data handling policy"}]},
+                    "misuseRecord": {"display": [{"name": "Misuse record"}]},
                     "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
                     "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
                 },
@@ -250,8 +272,8 @@ def build_router(deps: IssuerDeps) -> APIRouter:
     def issuer_offer(
         request: Request,
         type: str = Query("ConsentVC", alias="type"),
-        # SellerVC doesn't bind to a single dataset, so dataset_id is
-        # optional for it; required for everything else.
+        # SellerVC / DataUserVC don't bind to a single dataset, so
+        # dataset_id is optional for them; required for everything else.
         dataset_id: str | None = Query(default=None),
         purpose: str = Query("read"),
         seller_id: str | None = Query(default=None),
@@ -259,18 +281,25 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             default=None,
             description="Comma-separated dataset_ids the SellerVC licenses",
         ),
+        # Stage T (case alpha): DataUserVC inputs (mirrors
+        # ssi/contracts/DataUserVerifier.sol)
+        entity_type: str | None = Query(default=None),
+        legal_compliance: bool | None = Query(default=None),
+        data_handling_policy: str | None = Query(default=None),
+        misuse_record: bool | None = Query(default=None),
     ):
         if type not in VC_KIND_TO_CONFIG_ID:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown VC type: {type} (supported: {list(VC_KIND_TO_CONFIG_ID)})",
             )
-        if type != "SellerVC" and not dataset_id:
+        if type not in ("SellerVC", "DataUserVC") and not dataset_id:
             raise HTTPException(
                 status_code=400, detail="dataset_id required for this VC type"
             )
         config_id = VC_KIND_TO_CONFIG_ID[type]
         offer_seller_id: str | None = None
+        offer_data_user_attrs: dict | None = None
 
         if type == "ConsentVC":
             allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id or "", [purpose])
@@ -300,6 +329,28 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             page_title = "IW3IP Seller VC を発行"
             # SellerVC isn't dataset-scoped; carry a sentinel for storage.
             dataset_id = "*"
+        elif type == "DataUserVC":
+            for field_name, field_val in (
+                ("entity_type", entity_type),
+                ("legal_compliance", legal_compliance),
+                ("data_handling_policy", data_handling_policy),
+                ("misuse_record", misuse_record),
+            ):
+                if field_val is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{field_name} required for DataUserVC",
+                    )
+            offer_data_user_attrs = {
+                "entityType": entity_type,
+                "purpose": purpose,
+                "legalCompliance": bool(legal_compliance),
+                "dataHandlingPolicy": data_handling_policy,
+                "misuseRecord": bool(misuse_record),
+            }
+            allowed = []  # not used for DataUserVC
+            page_title = "IW3IP Data User VC を発行"
+            dataset_id = "*"
         else:  # PurchaseViewerVC
             allowed = ["read"]
             page_title = "IW3IP Purchase Viewer VC を発行"
@@ -311,6 +362,7 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             allowed_purposes=allowed,
             vc_kind=type,
             seller_id=offer_seller_id,
+            data_user_attrs=offer_data_user_attrs,
         )
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         co = _credential_offer(public_base, offer.pre_authorized_code, config_id)
@@ -431,6 +483,10 @@ def build_router(deps: IssuerDeps) -> APIRouter:
                     "buyer_eth_addr": claim.buyer_eth_addr,
                     "tx_hash": claim.tx_hash,
                     "purchased_at": int(claim.created_at),
+                    # Stage T (case alpha): bake tier into the VC so the
+                    # buyer can see what they paid for, and so verifier
+                    # presentation surfaces it back to the publisher.
+                    "allowed_views": claim.allowed_views,
                 })
                 deps.state.attach_holder_to_claim(claim.claim_id, holder_did)
                 # Audit the eth_addr <-> did:jwk binding now that we have both.
@@ -457,6 +513,16 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             plain_claims = {
                 "seller_id": offer.seller_id or "unknown",
                 "licensed_datasets": offer.allowed_purposes,
+                "iw3ip_issuer": deps.settings.issuer_id,
+            }
+        elif offer.vc_kind == "DataUserVC":
+            attrs = offer.data_user_attrs or {}
+            plain_claims = {
+                "entityType": attrs.get("entityType", ""),
+                "purpose": attrs.get("purpose", ""),
+                "legalCompliance": bool(attrs.get("legalCompliance", False)),
+                "dataHandlingPolicy": attrs.get("dataHandlingPolicy", ""),
+                "misuseRecord": bool(attrs.get("misuseRecord", False)),
                 "iw3ip_issuer": deps.settings.issuer_id,
             }
         elif offer.vc_kind in ("ViewerVC", "ServiceVC"):

@@ -26,6 +26,10 @@ class Offer:
     # Stage 7: SellerVC carries seller_id; licensed_datasets reuses
     # allowed_purposes (it's just a string list slot anyway).
     seller_id: str | None = None
+    # Stage T (case alpha): DataUserVC carries the 5 trust attributes that
+    # Li-san's DataUserVerifier.sol scores. Stored verbatim so the credential
+    # issuer can emit them as VC claims unchanged.
+    data_user_attrs: dict | None = None
 
 
 @dataclass
@@ -67,6 +71,12 @@ class ViewerToken:
 
     Re-usable within TTL (viewing is continuous), unlike PolicyToken which
     is single-use. Each successful /platform/data read bumps `read_count`.
+
+    `allowed_views` (Stage T): a list of view labels the holder is licensed
+    to read. Used by /platform/data to project the response. Standard
+    labels are `event` / `image` / `video`; the publisher applies a strict
+    allowlist. Defaults to `["event"]` for back-compat with VCs that
+    don't carry the claim.
     """
     jti: str
     token: str
@@ -75,6 +85,7 @@ class ViewerToken:
     issued_at: float
     expires_at: float
     read_count: int = 0
+    allowed_views: list[str] = field(default_factory=lambda: ["event"])
 
 
 @dataclass
@@ -93,6 +104,13 @@ class MarketplaceClaim:
     purchase_amount_wei: str
     created_at: float
     holder_did: str | None = None  # filled in M3 once wallet receives the VC
+    # Stage T (case alpha): tier baked into the PurchaseViewerVC at
+    # issuance time. Defaults to ["event"] (Tier 1) when no DataUserVC
+    # context is available; trust_score evaluation can promote it to
+    # Tier 2 / 3.
+    allowed_views: list[str] = field(default_factory=lambda: ["event"])
+    trust_score: int | None = None
+    access_level: str | None = None
 
 
 @dataclass
@@ -188,6 +206,7 @@ class SSIStateStore:
         allowed_purposes: list[str],
         vc_kind: str = "ConsentVC",
         seller_id: str | None = None,
+        data_user_attrs: dict | None = None,
     ) -> Offer:
         code = secrets.token_urlsafe(24)
         offer = Offer(
@@ -199,6 +218,7 @@ class SSIStateStore:
             created_at=time.time(),
             vc_kind=vc_kind,
             seller_id=seller_id,
+            data_user_attrs=data_user_attrs,
         )
         with self._lock:
             self._offers[code] = offer
@@ -335,6 +355,7 @@ class SSIStateStore:
         *,
         dataset_id: str,
         holder_did: str | None,
+        allowed_views: list[str] | None = None,
     ) -> ViewerToken:
         now = time.time()
         vt = ViewerToken(
@@ -344,6 +365,7 @@ class SSIStateStore:
             holder_did=holder_did,
             issued_at=now,
             expires_at=now + self._viewer_token_ttl,
+            allowed_views=list(allowed_views) if allowed_views else ["event"],
         )
         with self._lock:
             self._viewer_tokens[vt.token] = vt
@@ -433,6 +455,9 @@ class SSIStateStore:
         tx_hash: str,
         dataset_id: str,
         purchase_amount_wei: str,
+        allowed_views: list[str] | None = None,
+        trust_score: int | None = None,
+        access_level: str | None = None,
     ) -> tuple[MarketplaceClaim, bool]:
         """Return (claim, created). created=False means we returned the
         previously-recorded claim for this tx_hash (idempotent)."""
@@ -449,6 +474,9 @@ class SSIStateStore:
                 dataset_id=dataset_id,
                 purchase_amount_wei=purchase_amount_wei,
                 created_at=time.time(),
+                allowed_views=list(allowed_views) if allowed_views else ["event"],
+                trust_score=trust_score,
+                access_level=access_level,
             )
             self._marketplace_claims[claim.claim_id] = claim
             self._marketplace_claims_by_tx[tx_hash] = claim
