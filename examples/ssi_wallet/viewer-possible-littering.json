@@ -1,0 +1,39 @@
+{
+  "id": "viewer-possible-littering",
+  "name": "Viewer VC for home/event/possible_littering",
+  "purpose": "Verify the wallet holds a ViewerVC allowing read of webcam littering events.",
+  "iw3ip_dataset_id": "home/event/possible_littering",
+  "iw3ip_vc_kind": "ViewerVC",
+  "input_descriptors": [
+    {
+      "id": "viewer_vc_possible_littering",
+      "name": "ViewerVC (possible_littering)",
+      "format": {
+        "vc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        }
+      },
+      "constraints": {
+        "fields": [
+          {
+            "path": ["$.vct"],
+            "filter": {
+              "type": "string",
+              "const": "https://iw3ip.example/credentials/ViewerVC/v1"
+            }
+          },
+          {
+            "path": ["$.dataset_id"],
+            "filter": {
+              "type": "string",
+              "const": "home/event/possible_littering"
+            }
+          },
+          { "path": ["$.allowed_actions"], "filter": { "type": "array" } },
+          { "path": ["$.subject_id"] }
+        ]
+      }
+    }
+  ]
+}

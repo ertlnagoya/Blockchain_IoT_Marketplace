@@ -63,6 +63,14 @@ DEFAULT_ALLOWED_PURPOSES = {
     "home/env/flood_risk_high": ["safety", "emergency_planning"],
     "home/env/possible_littering": ["community_awareness", "planning"],
     "home/energy/power": ["research", "planning"],
+    # Event-namespace datasets used by the Phase 2 Stage 0 hands-on
+    # (webcam-event-sharing, environment-disaster). Adding them here
+    # lets Stage 1+ wallet flows preserve narrative continuity:
+    # the same camera/environment events that Stage 0 introduced are
+    # gated by VC instead of /consents JSON.
+    "home/event/possible_littering": ["community_cleaning", "research", "planning"],
+    "home/event/flood_risk_high": ["disaster_response", "safety", "emergency_planning"],
+    "home/event/person_detected": ["safety", "research"],
 }
 
 
