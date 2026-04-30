@@ -16,6 +16,7 @@ from publisher.app.mqtt_subscriber import MQTTSubscriber
 from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
 from publisher.app.media_routes import build_router as build_media_router
+from publisher.app.viewer_routes import build_router as build_viewer_router
 from publisher.app.ssi import issuer_routes, verifier_routes
 from publisher.app.ssi.config import SSISettings
 from publisher.app.ssi.keys import IssuerKeyStore
@@ -111,6 +112,12 @@ app.include_router(
         ipfs_gateway_url=settings.ipfs_gateway_url,
     )
 )
+
+# Stage T (PWA viewer): /viewer + /buyer/start render the buyer-side
+# UX so neither phone nor PC needs to copy URLs by hand. Both pages
+# are plain HTML + small JS so they work uniformly on Safari, Chrome,
+# Edge, Firefox.
+app.include_router(build_viewer_router())
 
 
 @app.on_event("startup")
