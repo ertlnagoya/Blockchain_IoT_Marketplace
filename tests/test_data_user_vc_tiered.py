@@ -879,3 +879,197 @@ def test_pipeline_hoists_image_url_video_url_to_top_level():
         assert env.get("image_url") == "http://publisher:8080/media/aaa.jpg"
         assert env.get("video_url") == "http://publisher:8080/media/bbb.mp4"
         assert env.get("video_duration_sec") == 4
+
+
+# ---- Stage T case C: kubo (IPFS) integration ----
+
+
+@pytest.fixture
+def client_with_ipfs(monkeypatch, tmp_path):
+    """Same as `client`, but with IPFS_API_URL / IPFS_GATEWAY_URL set
+    so the publisher tries to mirror uploads into kubo. The actual
+    HTTP calls to kubo are mocked at the httpx level inside each test.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("SSI_ISSUER_KEY_PATH", str(tmp_path / "issuer_key.jwk.json"))
+    monkeypatch.setenv("SSI_PRESENTATION_DEFS_DIR", str(repo_root / "examples" / "ssi_wallet"))
+    monkeypatch.setenv("SSI_ISSUER_BASE_URL", "http://testserver")
+    monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "audit.db"))
+    monkeypatch.setenv("CONSENT_STORE_PATH", str(tmp_path / "consents.json"))
+    monkeypatch.setenv("PLATFORM_API_URL", "http://testserver/platform/ingest")
+    monkeypatch.setenv("MQTT_BROKER_HOST", "localhost")
+    monkeypatch.setenv("MQTT_TOPICS", "")
+    monkeypatch.setenv("SSI_PEX_SIDECAR_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("MEDIA_STORE_PATH", str(tmp_path / "media"))
+    monkeypatch.setenv("MEDIA_PUBLIC_BASE_URL", "")
+    monkeypatch.setenv("IPFS_API_URL", "http://kubo-mock:5001")
+    monkeypatch.setenv("IPFS_GATEWAY_URL", "http://kubo-mock:8080")
+
+    import importlib
+    import publisher.app.main as pm
+    importlib.reload(pm)
+
+    with patch("publisher.app.mqtt_subscriber.MQTTSubscriber.start", lambda self: None), \
+         patch("publisher.app.mqtt_subscriber.MQTTSubscriber.stop", lambda self: None):
+        from fastapi.testclient import TestClient
+        with TestClient(pm.app) as tc:
+            yield tc, pm
+
+
+def test_media_upload_mirrors_to_ipfs(client_with_ipfs):
+    """When IPFS_API_URL is configured, /media/upload also pushes the
+    blob into kubo and surfaces a real CID + ipfs_gateway_url."""
+    tc, _ = client_with_ipfs
+    blob = _tiny_jpeg()
+    body, ct = _multipart_body("frame.jpg", "image/jpeg", blob)
+
+    fake_cid = "bafybeibwzrztabFAKEFROMTESTCID000000000000000"
+    captured: dict = {}
+
+    class _MockResp:
+        def __init__(self):
+            self.status_code = 200
+            self.text = '{"Name":"frame.jpg","Hash":"%s","Size":"%d"}' % (
+                fake_cid,
+                len(blob),
+            )
+
+        def raise_for_status(self):
+            return None
+
+    def _fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["params"] = kwargs.get("params") or {}
+        captured["body_bytes"] = len(kwargs.get("content") or b"")
+        return _MockResp()
+
+    with patch("publisher.app.media_routes.httpx.post", side_effect=_fake_post):
+        r = tc.post("/media/upload", content=body, headers={"Content-Type": ct})
+
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["cid"] == fake_cid
+    assert j["ipfs_gateway_url"].endswith(f"/ipfs/{fake_cid}")
+    assert j["url"].endswith(f"/media/{j['sha256']}.jpg")
+    # kubo HTTP API was called with cid-version=1 and pin=true
+    assert captured["url"].endswith("/api/v0/add")
+    assert captured["params"].get("cid-version") == "1"
+    assert captured["params"].get("pin") == "true"
+    assert captured["body_bytes"] > 0
+
+
+def test_media_upload_survives_ipfs_outage(client_with_ipfs):
+    """If kubo is configured but unreachable, /media/upload must still
+    succeed with the case-B URL — it just returns cid=null."""
+    tc, _ = client_with_ipfs
+    blob = _tiny_jpeg()
+    body, ct = _multipart_body("frame.jpg", "image/jpeg", blob)
+
+    import httpx as _httpx_mod
+
+    def _boom(url, **kwargs):
+        raise _httpx_mod.ConnectError("kubo unreachable")
+
+    with patch("publisher.app.media_routes.httpx.post", side_effect=_boom):
+        r = tc.post("/media/upload", content=body, headers={"Content-Type": ct})
+
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["cid"] is None
+    assert j["ipfs_gateway_url"] is None
+    # case-B URL still works
+    assert j["url"].endswith(f"/media/{j['sha256']}.jpg")
+
+
+def test_ipfs_proxy_streams_gateway_response(client_with_ipfs):
+    """GET /ipfs/<cid> must reverse-proxy the configured gateway and
+    forward the upstream content-type so the wallet renders correctly."""
+    tc, _ = client_with_ipfs
+    cid = "bafybeitestproxy00000000000000000000000000000000"
+    expected_body = b"\xff\xd8\xff\xe0this-is-a-jpeg"
+
+    class _MockResp:
+        def __init__(self):
+            self.status_code = 200
+            self.content = expected_body
+            self.headers = {"content-type": "image/jpeg"}
+            self.text = ""
+
+    def _fake_get(url, **kwargs):
+        assert url.endswith(f"/ipfs/{cid}")
+        return _MockResp()
+
+    with patch("publisher.app.media_routes.httpx.get", side_effect=_fake_get):
+        r = tc.get(f"/ipfs/{cid}")
+
+    assert r.status_code == 200
+    assert r.content == expected_body
+    assert r.headers["content-type"].startswith("image/jpeg")
+
+
+def test_ipfs_proxy_404_when_gateway_disabled(client, monkeypatch):
+    """Without IPFS_GATEWAY_URL, /ipfs/<cid> must answer 404 — the
+    deployment can still rely on public gateways for resolution."""
+    tc, _ = client
+    r = tc.get("/ipfs/bafybeisomething")
+    assert r.status_code == 404
+
+
+def test_ipfs_proxy_502_when_gateway_unreachable(client_with_ipfs):
+    tc, _ = client_with_ipfs
+    import httpx as _httpx_mod
+
+    def _boom(url, **kwargs):
+        raise _httpx_mod.ConnectError("kubo unreachable")
+
+    with patch("publisher.app.media_routes.httpx.get", side_effect=_boom):
+        r = tc.get("/ipfs/bafybeicid")
+    assert r.status_code == 502
+    assert "ipfs_gateway_unreachable" in r.json()["detail"]
+
+
+def test_provider_payload_carries_cid_when_ipfs_active(client_with_ipfs):
+    """End-to-end: when IPFS is on, the upload response carries a CID,
+    and a payload that folds it in surfaces image_cid at /platform/data
+    (Tier 2 / Tier 3 only)."""
+    tc, pm = client_with_ipfs
+    fake_cid = "bafybeitestcidforpayload0000000000000000000000"
+    blob = _tiny_jpeg()
+    body, ct = _multipart_body("img.jpg", "image/jpeg", blob)
+
+    class _MockAddResp:
+        status_code = 200
+        text = '{"Hash":"%s","Size":"%d"}' % (fake_cid, len(blob))
+
+        def raise_for_status(self):
+            return None
+
+    with patch(
+        "publisher.app.media_routes.httpx.post",
+        side_effect=lambda *a, **kw: _MockAddResp(),
+    ):
+        up = tc.post(
+            "/media/upload", content=body, headers={"Content-Type": ct}
+        ).json()
+    assert up["cid"] == fake_cid
+
+    # Provider would fold this into the event payload as image_cid.
+    pm.app.state.ingested.append({
+        "dataset_id": "home/env/temperature",
+        "event_type": "tick",
+        "data": {"value": 42},
+        "image_cid": fake_cid,
+        "image_url": up["url"],
+    })
+
+    presented = _purchase_viewer_token(
+        tc, allowed_views_in_claim=["event", "image"], tx_seed="91"
+    )
+    rsp = tc.get(
+        "/platform/data",
+        params={"dataset_id": "home/env/temperature"},
+        headers={"Authorization": f"Bearer {presented['viewer_token']}"},
+    ).json()
+    row = rsp["rows"][0]
+    assert row.get("image_cid") == fake_cid
+    assert row.get("image_url", "").endswith(f"/media/{up['sha256']}.jpg")

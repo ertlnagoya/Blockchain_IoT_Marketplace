@@ -100,6 +100,10 @@ def main() -> None:
     print("[upload]", json.dumps({"image": img_resp, "video": vid_resp}, indent=2))
 
     # 3) Build the event payload. The pipeline hoists either form.
+    # When the publisher's media gateway is wired into a kubo daemon
+    # (Stage T case C) it also returns a content-addressed CID; we fold
+    # both into the payload so receivers can pick whichever they have
+    # access to (publisher proxy URL, public IPFS gateway, etc.).
     payload = {
         "event_type": "possible_littering",
         "data": {
@@ -113,6 +117,10 @@ def main() -> None:
         "ts": datetime.now(timezone.utc).isoformat(),
         "source": "edge_inference",
     }
+    if img_resp.get("cid"):
+        payload["image_cid"] = img_resp["cid"]
+    if vid_resp.get("cid"):
+        payload["video_cid"] = vid_resp["cid"]
 
     body = {
         "topic": "homeassistant/event/possible_littering",

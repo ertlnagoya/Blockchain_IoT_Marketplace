@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     # same origin it fetched the platform data from.
     media_public_base_url: str = ""
 
+    # Stage T (case C): IPFS daemon HTTP API base URL (e.g.
+    # http://ipfs:5001). When set, /media/upload also pushes the blob
+    # into IPFS via `POST /api/v0/add` and the response carries a real
+    # content-addressed `cid`. When empty, the gateway runs in case B
+    # mode (publisher-hosted URL only).
+    ipfs_api_url: str = ""
+    # IPFS HTTP gateway (the publisher reverse-proxies /ipfs/<cid> to
+    # this). Production: http://ipfs:8080 inside the docker network;
+    # leave empty to disable the proxy and rely on public gateways.
+    ipfs_gateway_url: str = ""
+
     # Stage 7 (case C): when set, /marketplace/register verifies that
     # Merchandise.getOwner() == seller_eth_addr against this RPC. Leave
     # unset in tests/dev to skip the check (and in audit log we'll mark

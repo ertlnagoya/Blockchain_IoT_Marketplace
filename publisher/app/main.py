@@ -107,6 +107,8 @@ app.include_router(
     build_media_router(
         store_path=settings.media_store_path,
         public_base_url=settings.media_public_base_url,
+        ipfs_api_url=settings.ipfs_api_url,
+        ipfs_gateway_url=settings.ipfs_gateway_url,
     )
 )
 
