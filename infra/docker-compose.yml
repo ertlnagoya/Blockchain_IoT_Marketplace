@@ -38,6 +38,21 @@ services:
       # off, both env vars stay empty and the gateway runs case B only.
       IPFS_API_URL: ${IPFS_API_URL:-}
       IPFS_GATEWAY_URL: ${IPFS_GATEWAY_URL:-}
+      # Stage T (VLM extension): semantic-level tier projection.
+      # Activate with the `vlm` compose profile -- when the env vars
+      # below are non-empty the publisher generates description_full /
+      # description_summary / image_url_redacted alongside the raw
+      # upload and /platform/data ships them per the tier projection
+      # in trust_score._level_to_views_vlm. When empty the publisher
+      # runs the legacy 3-tier path (image/video keys drop per tier)
+      # exactly as before, so existing tests and demos do not regress.
+      # Backends:
+      #   VLM_BACKEND in {"", "stub", "ollama"}
+      #   IMAGE_REDACTION_BACKEND in {"", "stub", "opencv"}
+      VLM_BACKEND: ${VLM_BACKEND:-}
+      VLM_API_URL: ${VLM_API_URL:-}
+      VLM_MODEL: ${VLM_MODEL:-llava}
+      IMAGE_REDACTION_BACKEND: ${IMAGE_REDACTION_BACKEND:-}
       SSI_ISSUER_BASE_URL: ${SSI_ISSUER_BASE_URL:-http://publisher:8080}
       SSI_ISSUER_KEY_PATH: /data/issuer_key.jwk.json
       SSI_PEX_SIDECAR_URL: http://verifier-sidecar:7000
@@ -110,6 +125,20 @@ services:
     # ports:
     #   - "5001:5001"   # API
     #   - "8081:8080"   # gateway (8081 to avoid collision with publisher)
+
+  # Stage T (VLM extension) — placeholder service for `--profile vlm`.
+  # Δ2 (this PR): empty service definition exists so `docker compose
+  # --profile vlm up` succeeds and the publisher's VLM_BACKEND env var
+  # gets exercised end-to-end with the `stub` backend (no external
+  # model needed for the architecture smoke test).
+  # Δ3 (next PR): replace this with a real Ollama service that loads
+  # `llava` and exposes /api/generate, then flip the publisher's
+  # VLM_BACKEND default to `ollama` under the same profile.
+  vlm:
+    image: alpine:3.20
+    container_name: iw3ip-vlm
+    profiles: ["vlm"]
+    command: ["sh", "-c", "echo 'vlm placeholder (Δ3 will replace with ollama+llava)'; sleep infinity"]
 
 volumes:
   publisher_data:

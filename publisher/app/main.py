@@ -15,9 +15,11 @@ from publisher.app.models import SimulatePublishRequest
 from publisher.app.mqtt_subscriber import MQTTSubscriber
 from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
+from publisher.app.image_redactor import ImageRedactor
 from publisher.app.media_routes import build_router as build_media_router
 from publisher.app.viewer_routes import build_router as build_viewer_router
 from publisher.app.provider_routes import build_router as build_provider_router
+from publisher.app.vlm_client import VLMClient
 from publisher.app.ssi import issuer_routes, verifier_routes
 from publisher.app.ssi.config import SSISettings
 from publisher.app.ssi.keys import IssuerKeyStore
@@ -35,6 +37,13 @@ audit_repo = SQLiteAuditRepository(settings.audit_db_path)
 policy_engine = PolicyEngine()
 platform_client = PlatformClient(settings.platform_api_url)
 
+# Stage T (VLM extension): both injectors are None when their backend
+# settings are empty -- the pipeline then runs the legacy 3-tier path
+# unchanged. With `--profile vlm` (compose) the env vars get set and
+# the corresponding clients spin up.
+vlm_client = VLMClient.from_settings(settings)
+image_redactor = ImageRedactor.from_settings(settings)
+
 processor = MessageProcessor(
     publisher_id=settings.publisher_id,
     default_purpose=settings.default_purpose,
@@ -42,6 +51,8 @@ processor = MessageProcessor(
     policy_engine=policy_engine,
     audit_repo=audit_repo,
     platform_client=platform_client,
+    vlm_client=vlm_client,
+    image_redactor=image_redactor,
 )
 
 mqtt_subscriber = MQTTSubscriber(
@@ -334,6 +345,14 @@ def platform_data(
     # URL during migration.
     _IMAGE_KEYS = ("image_cid", "image_url")
     _VIDEO_KEYS = ("video_cid", "video_url", "video_duration_sec")
+    # Stage T (VLM extension): image_redacted / description_full /
+    # description_summary are projected alongside the legacy keys.
+    # processing_warnings always passes through so receivers can see
+    # which derivatives were degraded.
+    _IMAGE_REDACTED_KEYS = ("image_url_redacted", "image_cid_redacted")
+    _DESCRIPTION_FULL_KEYS = ("description_full",)
+    _DESCRIPTION_SUMMARY_KEYS = ("description_summary",)
+    _AUDIT_KEYS = ("description_model", "description_generated_at")
 
     def _project(row: dict) -> dict:
         out: dict = {}
@@ -342,6 +361,15 @@ def platform_data(
                 continue
             if k in _VIDEO_KEYS and "video" not in allowed_views:
                 continue
+            if k in _IMAGE_REDACTED_KEYS and "image_redacted" not in allowed_views:
+                continue
+            if k in _DESCRIPTION_FULL_KEYS and "description_full" not in allowed_views:
+                continue
+            if k in _DESCRIPTION_SUMMARY_KEYS and "description_summary" not in allowed_views:
+                continue
+            # _AUDIT_KEYS / processing_warnings: always pass through
+            # so the receiver knows which model produced the
+            # description_summary they're allowed to see.
             out[k] = v
         return out
 
@@ -417,7 +445,14 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
     data_user_attrs = body.get("data_user_attrs")
     if isinstance(data_user_attrs, dict) and data_user_attrs:
         from publisher.app.ssi.trust_score import evaluate_from_claims
-        evaluation = evaluate_from_claims(data_user_attrs)
+        # Stage T (VLM extension): when --profile vlm is on the
+        # marketplace claim mints a 4-tier allowed_views (full / access
+        # / summary / denied) that the /platform/data projector then
+        # uses. Off, the legacy 3-tier mapping is unchanged so existing
+        # tests keep their assertions valid.
+        evaluation = evaluate_from_claims(
+            data_user_attrs, vlm_profile=settings.vlm_enabled
+        )
         allowed_views = list(evaluation.allowed_views)
         trust_score = evaluation.trust_score
         access_level = evaluation.access_level
