@@ -506,3 +506,35 @@ def test_semantic_render_route_unknown_trust_collapses_to_anonymous():
     body = r.json()
     assert body["trust_level"] == "anonymous"
     assert "image_b64" not in body
+
+
+def test_semantic_render_url_route_falls_through_on_fetch_failure():
+    """One-shot helper for /viewer: when the URL fetch fails, return a
+    trust-aware text-only response (never raw bytes)."""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_semantic_test_app())
+    r = client.post(
+        "/semantic/render_url",
+        json={
+            "trust_level": "medium",
+            "image_url": "http://localhost:1/does-not-exist.jpg",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Fetch failed -> empty SIR with privacy_risk_score=1.0 strips
+    # all image kinds at MEDIUM. Text affordances remain.
+    assert "image_b64" not in body
+    assert body["trust_level"] == "medium"
+
+
+def test_semantic_render_url_requires_image_url():
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_semantic_test_app())
+    r = client.post("/semantic/render_url", json={"trust_level": "medium", "image_url": ""})
+    assert r.status_code == 400
+    assert "image_url_required" in r.text
+
+
