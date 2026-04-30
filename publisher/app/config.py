@@ -68,6 +68,24 @@ class Settings(BaseSettings):
     # marker for tests. "opencv" = real Haar-cascade face blur (Δ3).
     image_redaction_backend: str = ""
 
+    # Stage T+ (semantic-tier pipeline). Selects which
+    # SemanticAnalyzer backend services /semantic/analyze. The
+    # analyzer turns a frame into a SIR
+    # (Semantic Intermediate Representation) that the trust-aware
+    # renderer consumes. Backends:
+    #   ""       -> mock (deterministic stub; test/dev default)
+    #   "stub"   -> alias of mock
+    #   "vision" -> OpenCV Haar cascade + MSER heuristic
+    #               (requires opencv-python-headless)
+    # Apple Vision / Core ML / external VLM backends would slot in
+    # here without changes to /semantic/* call sites.
+    semantic_analyzer_backend: str = ""
+
+    # Allow HIGH-tier viewers to receive `unknown_sensitive` regions
+    # un-masked. Default: False (fail-closed). Operators with a manual
+    # review queue downstream can flip this to True.
+    semantic_allow_unknown_at_high: bool = False
+
     @property
     def vlm_enabled(self) -> bool:
         """True when any VLM-tier feature is active.

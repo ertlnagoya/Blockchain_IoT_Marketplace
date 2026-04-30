@@ -19,6 +19,10 @@ from publisher.app.image_redactor import ImageRedactor
 from publisher.app.media_routes import build_router as build_media_router
 from publisher.app.viewer_routes import build_router as build_viewer_router
 from publisher.app.provider_routes import build_router as build_provider_router
+from publisher.app.semantic_analyzer import SemanticAnalyzer
+from publisher.app.semantic_routes import build_router as build_semantic_router
+from publisher.app.trust_aware_renderer import TrustAwareRenderer
+from publisher.app.trust_policy import TrustPolicyEngine
 from publisher.app.vlm_client import VLMClient
 from publisher.app.ssi import issuer_routes, verifier_routes
 from publisher.app.ssi.config import SSISettings
@@ -141,6 +145,26 @@ app.include_router(
         ssi_state=ssi_state,
         processor=processor,
         audit_repo=audit_repo,
+    )
+)
+
+# Stage T+ (semantic-tier pipeline): /semantic/analyze + /semantic/render.
+# These wrap the SemanticAnalyzer / TrustPolicyEngine / TrustAwareRenderer
+# so the /provider page (or any future iPhone-side client) can run the
+# fail-closed disclosure flow without re-implementing it. Production
+# viewer paths (/viewer + /platform/data) call into the renderer
+# directly with the ViewerToken context; /semantic/* is the dev /
+# integration affordance.
+_semantic_analyzer = SemanticAnalyzer.from_settings(settings)
+_trust_policy_engine = TrustPolicyEngine(
+    allow_unknown_at_high=settings.semantic_allow_unknown_at_high,
+)
+_trust_aware_renderer = TrustAwareRenderer()
+app.include_router(
+    build_semantic_router(
+        analyzer=_semantic_analyzer,
+        policy_engine=_trust_policy_engine,
+        renderer=_trust_aware_renderer,
     )
 )
 
