@@ -409,6 +409,17 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
       background: rgba(46,125,50,0.12); color: #1b5e20;
       padding: 2px 8px; border-radius: 999px; font-size: 0.75rem;
     }
+    .modes {
+      display: grid; gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .mode {
+      border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem;
+      background: rgba(0,0,0,0.02);
+    }
+    .mode-title { font-weight: 600; color: #2e7d32; margin-bottom: 0.4rem; display:block; }
+    .mode input[type=file] { width: 100%; }
+    .rec-on { background: #c62828 !important; }
   </style>
 </head>
 <body>
@@ -417,8 +428,31 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
 
   <fieldset>
     <legend>1. メディアをアップロード <span class="pill">/media/upload</span></legend>
-    <p class="meta">画像 (JPEG / PNG / WebP) または動画 (MP4 / WebM) を選んでください。SHA-256 で重複排除されるので同じファイルの再アップロードは無料です。</p>
-    <input type="file" id="file" accept="image/*,video/*" />
+    <p class="meta">提供方法を 3 つから選べます。どのソースでも SHA-256 で重複排除されます。</p>
+
+    <div class="modes">
+      <div class="mode">
+        <label class="mode-title">📁 ファイルから選ぶ</label>
+        <input type="file" id="filePick" accept="image/*,video/*" />
+        <p class="meta">PC / スマホ共通。既存のファイルを選択。</p>
+      </div>
+      <div class="mode">
+        <label class="mode-title">📷 カメラで撮影 (iPhone 推奨)</label>
+        <input type="file" id="fileCapture" accept="image/*,video/*" capture="environment" />
+        <p class="meta">iPhone Safari ではカメラが直接起動します。PC では通常のファイル選択にフォールバック。</p>
+      </div>
+      <div class="mode">
+        <label class="mode-title">🔴 ブラウザで録画 (PC 推奨)</label>
+        <div class="row-fields">
+          <button class="btn secondary" id="recStart" type="button">録画開始</button>
+          <button class="btn" id="recStop" type="button" disabled>停止 &amp; アップロード</button>
+          <span class="meta" id="recStatus">待機中</span>
+        </div>
+        <video id="recPreview" muted playsinline style="display:none;width:100%;max-height:200px;background:#000;border-radius:6px;margin-top:0.5rem"></video>
+        <p class="meta">PC のウェブカメラ + マイクから録画 (WebM / VP9)。停止すると自動アップロードします。</p>
+      </div>
+    </div>
+
     <div class="preview" id="preview"></div>
     <div id="uploadResult"></div>
   </fieldset>
@@ -479,34 +513,34 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
     buyerLink.textContent = buyerUrl.toString();
 
     let lastUpload = null; // { url, cid, ipfs_gateway_url, content_type, byte_size }
-    const fileInput = document.getElementById("file");
     const preview = document.getElementById("preview");
     const uploadResult = document.getElementById("uploadResult");
     const publishBtn = document.getElementById("publishBtn");
     const publishHint = document.getElementById("publishHint");
 
-    fileInput.addEventListener("change", async () => {
-      const f = fileInput.files?.[0];
+    // ---- shared upload pipeline ----
+    // All three input modes (file / capture / recorder) end up calling
+    // this with a Blob-or-File. We render a local preview, POST to
+    // /media/upload, and update lastUpload + the publish button state.
+    async function uploadBlob(blob, sourceLabel) {
       preview.innerHTML = "";
-      uploadResult.innerHTML = "";
-      if (!f) {
-        publishBtn.disabled = true;
-        publishHint.textContent = "先にメディアをアップロードしてください";
-        return;
-      }
+      uploadResult.innerHTML = `<p class="meta">アップロード中… (${sourceLabel})</p>`;
 
       // local preview
-      const url = URL.createObjectURL(f);
-      const isImg = f.type.startsWith("image/");
+      const objectUrl = URL.createObjectURL(blob);
+      const isImg = (blob.type || "").startsWith("image/");
       const tag = document.createElement(isImg ? "img" : "video");
-      tag.src = url;
+      tag.src = objectUrl;
       if (!isImg) tag.controls = true;
       preview.appendChild(tag);
 
-      // upload to /media/upload (open by design)
-      uploadResult.innerHTML = `<p class="meta">アップロード中…</p>`;
+      // /media/upload expects a multipart `file` field. For File objects
+      // FormData uses File.name; for raw Blobs (from MediaRecorder) we
+      // pass an explicit filename so the server's _resolve_ext picks the
+      // right extension.
       const fd = new FormData();
-      fd.append("file", f);
+      const filename = blob.name || (blob.type.startsWith("video/") ? "recorded.webm" : "recorded.bin");
+      fd.append("file", blob, filename);
       try {
         const r = await fetch(`${ORIGIN}/media/upload`, { method: "POST", body: fd });
         const text = await r.text();
@@ -520,7 +554,7 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
           : "";
         uploadResult.innerHTML = `
           <div class="ok">
-            <strong>アップロード完了</strong><br />
+            <strong>アップロード完了</strong> (${sourceLabel})<br />
             URL: <a href="${lastUpload.url}" target="_blank" rel="noopener noreferrer">${lastUpload.url}</a>
             ${cidLine}
             <br /><span class="meta">${lastUpload.content_type} • ${lastUpload.byte_size} bytes • sha256=${lastUpload.sha256.slice(0, 12)}…</span>
@@ -530,6 +564,107 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
         publishHint.textContent = "発行する内容を確認して Publish を押してください";
       } catch (e) {
         uploadResult.innerHTML = `<div class="err">network error: ${e.message || e}</div>`;
+      }
+    }
+
+    function bindFileInput(id, label) {
+      const el = document.getElementById(id);
+      el.addEventListener("change", () => {
+        const f = el.files?.[0];
+        if (f) uploadBlob(f, label);
+      });
+    }
+    bindFileInput("filePick", "ファイル選択");
+    bindFileInput("fileCapture", "カメラ撮影");
+
+    // ---- MediaRecorder mode (PC ブラウザ録画) ----
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let recChunks = [];
+    const recStart = document.getElementById("recStart");
+    const recStop = document.getElementById("recStop");
+    const recPreview = document.getElementById("recPreview");
+    const recStatus = document.getElementById("recStatus");
+
+    function pickRecorderMime() {
+      // Prefer VP9 then VP8 (Chromium/Firefox), fall back to MP4 (Safari 14.1+).
+      const candidates = [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+        "video/mp4",
+      ];
+      for (const m of candidates) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+      }
+      return "";
+    }
+
+    recStart.addEventListener("click", async () => {
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        recStatus.textContent = "このブラウザは録画に対応していません";
+        recStatus.style.color = "#b71c1c";
+        return;
+      }
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: true,
+        });
+        recPreview.srcObject = mediaStream;
+        recPreview.style.display = "block";
+        await recPreview.play().catch(() => { /* autoplay may be blocked, ignore */ });
+
+        const mime = pickRecorderMime();
+        const opts = mime ? { mimeType: mime } : {};
+        mediaRecorder = new MediaRecorder(mediaStream, opts);
+        recChunks = [];
+        mediaRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) recChunks.push(ev.data);
+        };
+        mediaRecorder.onstop = async () => {
+          const startedAt = mediaRecorder._startedAt || Date.now();
+          const durationSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+          // Auto-fill the video_duration_sec field with the actual length.
+          document.getElementById("videoDuration").value = String(durationSec);
+
+          const type = (mime || "video/webm").split(";")[0];
+          const ext = type.endsWith("mp4") ? "mp4" : "webm";
+          const blob = new Blob(recChunks, { type });
+          const filename = `recorded-${Date.now()}.${ext}`;
+          // Wrap as File so the upload pipeline shows a friendly name.
+          const file = new File([blob], filename, { type });
+
+          // Tear down the camera stream now that we have the blob.
+          mediaStream.getTracks().forEach(t => t.stop());
+          recPreview.srcObject = null;
+          recPreview.style.display = "none";
+
+          recStart.disabled = false;
+          recStart.classList.remove("rec-on");
+          recStop.disabled = true;
+          recStatus.textContent = `録画完了 (${durationSec}s) — アップロード中…`;
+          recStatus.style.color = "";
+
+          await uploadBlob(file, "ブラウザ録画");
+          recStatus.textContent = `録画完了 (${durationSec}s)`;
+        };
+        mediaRecorder._startedAt = Date.now();
+        mediaRecorder.start(1000); // gather a chunk every 1 s
+
+        recStart.disabled = true;
+        recStart.classList.add("rec-on");
+        recStop.disabled = false;
+        recStatus.textContent = "🔴 録画中…";
+      } catch (e) {
+        recStatus.textContent = `カメラの取得に失敗: ${e.message || e}`;
+        recStatus.style.color = "#b71c1c";
+      }
+    });
+
+    recStop.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
       }
     });
 

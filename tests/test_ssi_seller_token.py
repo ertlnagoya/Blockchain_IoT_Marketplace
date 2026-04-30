@@ -351,6 +351,24 @@ def test_provider_page_renders_html_with_pt_and_ds(client):
     assert "/provider/publish" in body
 
 
+def test_provider_page_offers_three_input_modes(client):
+    """c2-camera: file picker / iPhone capture / browser MediaRecorder.
+    Each must be wired in the page so the operator can pick whichever
+    matches their device."""
+    tc, _ = client
+    r = tc.get("/provider", params={"pt": "fake-token", "ds": "home/env/temperature"})
+    body = r.text
+    # File picker (existing) + iPhone capture-attribute input.
+    assert 'id="filePick"' in body
+    assert 'id="fileCapture"' in body
+    assert 'capture="environment"' in body
+    # MediaRecorder buttons + permission-prompt API.
+    assert 'id="recStart"' in body
+    assert 'id="recStop"' in body
+    assert "MediaRecorder" in body
+    assert "getUserMedia" in body
+
+
 def test_provider_page_requires_pt_and_ds(client):
     tc, _ = client
     assert tc.get("/provider", params={"pt": "x"}).status_code == 422
