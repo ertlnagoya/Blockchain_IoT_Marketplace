@@ -6,12 +6,29 @@ a trust score (0-100) and maps it to one of three access levels:
 so the publisher can drive the same evaluation off-chain (and stay in
 sync with the on-chain verifier when Stage 8d / ZK gets wired in).
 
-Stage T (case α) maps the access level to `allowed_views`:
+Stage T (case α, legacy 3-tier projection):
     full   -> ["event", "image", "video"]
     access -> ["event", "image"]
     denied -> []
 
+Stage T (VLM extension, 4-tier projection — opt-in via `vlm_profile=True`):
+    full    -> ["event", "image", "video",
+                "image_redacted",
+                "description_full", "description_summary"]
+    access  -> ["event",
+                "image_redacted",
+                "description_full", "description_summary"]
+    summary -> ["event", "description_summary"]
+    denied  -> []
+
+The legacy 3-tier projection is kept verbatim when `vlm_profile=False`
+so flipping the publisher's `--profile vlm` switch is the only thing
+that changes behaviour. Tests for the legacy path keep passing
+unchanged.
+
 Keep the scoring constants in lock-step with `DataUserVerifier.sol`.
+See ``docs/hands-on/data-user-vc-tiered-spec.md`` "Tier extension:
+semantic-level redaction (VLM)" for the schema contract.
 """
 from __future__ import annotations
 
@@ -21,7 +38,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class TrustEvaluation:
     trust_score: int
-    access_level: str  # "full" | "access" | "denied"
+    access_level: str  # "full" | "access" | "summary" | "denied"
     allowed_views: list[str]
 
 
@@ -41,6 +58,11 @@ _PURPOSE_SCORES = {
     "RESEARCH": 15,
 }
 
+# Score band that triggers the new `summary` tier when the VLM
+# profile is on. Below this band the claim is still rejected outright;
+# above this band the legacy `access` tier kicks in unchanged.
+_SUMMARY_TIER_FLOOR = 50
+
 
 def _entity_score(entity_type: str) -> int:
     return _ENTITY_SCORES.get(entity_type.upper(), 5)
@@ -50,11 +72,37 @@ def _purpose_score(purpose: str) -> int:
     return _PURPOSE_SCORES.get(purpose.upper(), 5)
 
 
-def _level_to_views(access_level: str) -> list[str]:
+def _level_to_views_legacy(access_level: str) -> list[str]:
     if access_level == "full":
         return ["event", "image", "video"]
     if access_level == "access":
         return ["event", "image"]
+    return []
+
+
+def _level_to_views_vlm(access_level: str) -> list[str]:
+    """Updated mapping when `--profile vlm` is on. Raw image/video keys
+    narrow to Tier 3 only; Tier 2 swaps `image` for `image_redacted`
+    and gains both description keys; Tier 1 (the new `summary` tier)
+    only ships the redacted summary text."""
+    if access_level == "full":
+        return [
+            "event",
+            "image",
+            "video",
+            "image_redacted",
+            "description_full",
+            "description_summary",
+        ]
+    if access_level == "access":
+        return [
+            "event",
+            "image_redacted",
+            "description_full",
+            "description_summary",
+        ]
+    if access_level == "summary":
+        return ["event", "description_summary"]
     return []
 
 
@@ -65,8 +113,20 @@ def evaluate(
     legal_compliance: bool,
     data_handling_policy: str,
     misuse_record: bool,
+    vlm_profile: bool = False,
 ) -> TrustEvaluation:
-    """Mirror of DataUserVerifier.sol: verifyUserAccess()."""
+    """Mirror of DataUserVerifier.sol: verifyUserAccess().
+
+    The trust score is profile-independent (the 5-attribute weight
+    table is shared with the on-chain verifier, so flipping the
+    publisher flag must not move the number).
+
+    `vlm_profile` only changes the `score -> access_level` cutoff (a
+    new `summary` band appears between `access` and `denied`) and the
+    `access_level -> allowed_views` mapping (new keys appear). When
+    `vlm_profile=False` the function returns exactly what the original
+    Stage T (case α) version did.
+    """
     score = _entity_score(entity_type) + _purpose_score(purpose)
     if legal_compliance:
         score += 15
@@ -81,17 +141,20 @@ def evaluate(
         access = "full"
     elif score >= 60:
         access = "access"
+    elif vlm_profile and score >= _SUMMARY_TIER_FLOOR:
+        access = "summary"
     else:
         access = "denied"
 
+    views = _level_to_views_vlm(access) if vlm_profile else _level_to_views_legacy(access)
     return TrustEvaluation(
         trust_score=score,
         access_level=access,
-        allowed_views=_level_to_views(access),
+        allowed_views=views,
     )
 
 
-def evaluate_from_claims(claims: dict) -> TrustEvaluation:
+def evaluate_from_claims(claims: dict, *, vlm_profile: bool = False) -> TrustEvaluation:
     """Convenience: read the 5 attributes straight from a DataUserVC's
     decoded claims dict (the publisher applies this when a DataUserVC
     is presented as part of a marketplace claim)."""
@@ -101,4 +164,5 @@ def evaluate_from_claims(claims: dict) -> TrustEvaluation:
         legal_compliance=bool(claims.get("legalCompliance", False)),
         data_handling_policy=str(claims.get("dataHandlingPolicy") or ""),
         misuse_record=bool(claims.get("misuseRecord", False)),
+        vlm_profile=vlm_profile,
     )
