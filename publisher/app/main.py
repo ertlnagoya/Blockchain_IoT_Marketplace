@@ -17,6 +17,7 @@ from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
 from publisher.app.media_routes import build_router as build_media_router
 from publisher.app.viewer_routes import build_router as build_viewer_router
+from publisher.app.provider_routes import build_router as build_provider_router
 from publisher.app.ssi import issuer_routes, verifier_routes
 from publisher.app.ssi.config import SSISettings
 from publisher.app.ssi.keys import IssuerKeyStore
@@ -118,6 +119,11 @@ app.include_router(
 # are plain HTML + small JS so they work uniformly on Safari, Chrome,
 # Edge, Firefox.
 app.include_router(build_viewer_router())
+
+# Stage T (PWA provider, c1): /provider/start renders the provider-side
+# OID4VP loop (SellerVC presentation -> SellerToken). The actual
+# upload + publish UI lands in c2.
+app.include_router(build_provider_router())
 
 
 @app.on_event("startup")
