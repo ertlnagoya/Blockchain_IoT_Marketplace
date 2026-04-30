@@ -268,6 +268,88 @@ def test_vlm_ollama_backend_calls_http(monkeypatch):
     assert out["description_model"] == "ollama/llava"
 
 
+def test_vlm_per_backend_prompts_long_for_llava(monkeypatch):
+    """llava-* models get the default (long) prompt set with explicit
+    PII-redaction instructions."""
+    from publisher.app import vlm_client as vc_mod
+
+    captured = []
+
+    def fake_fetch(image_url, *, timeout=10.0):
+        return "ZmFrZS1iYXNlNjQ="
+
+    def fake_generate(*, api_url, model, prompt, image_b64):
+        captured.append({"model": model, "prompt": prompt})
+        return "ok"
+
+    monkeypatch.setattr(vc_mod, "_fetch_image_b64", fake_fetch)
+    monkeypatch.setattr(vc_mod, "_ollama_generate", fake_generate)
+
+    c = VLMClient(backend="ollama", api_url="http://vlm:11434", model="llava")
+    c.describe(image_url="http://x/y.jpg", content_type="image/jpeg")
+
+    # Default prompt set: detailed instructions, ~200+ chars per stage.
+    full_prompt = captured[0]["prompt"]
+    summary_prompt = captured[1]["prompt"]
+    assert len(full_prompt) > 150
+    assert "names of people" in full_prompt
+    assert "WITHOUT identifying" in summary_prompt
+    assert "license plate" in summary_prompt
+
+
+def test_vlm_per_backend_prompts_short_for_moondream(monkeypatch):
+    """moondream / bakllava get a short prompt set: real-device finding
+    is they truncate to 3-10 char fragments on the long defaults."""
+    from publisher.app import vlm_client as vc_mod
+
+    captured = []
+
+    def fake_fetch(image_url, *, timeout=10.0):
+        return "ZmFrZS1iYXNlNjQ="
+
+    def fake_generate(*, api_url, model, prompt, image_b64):
+        captured.append({"model": model, "prompt": prompt})
+        return "ok"
+
+    monkeypatch.setattr(vc_mod, "_fetch_image_b64", fake_fetch)
+    monkeypatch.setattr(vc_mod, "_ollama_generate", fake_generate)
+
+    c = VLMClient(backend="ollama", api_url="http://vlm:11434", model="moondream")
+    c.describe(image_url="http://x/y.jpg", content_type="image/jpeg")
+
+    full_prompt = captured[0]["prompt"]
+    summary_prompt = captured[1]["prompt"]
+    # Short set: under 200 chars per stage (vs >150 for long).
+    assert len(full_prompt) < 200
+    # Still has the privacy-preserving distinction in the summary
+    # prompt (the whole point of the two-stage design).
+    assert "without naming" in summary_prompt.lower()
+
+
+def test_vlm_per_backend_prompts_unknown_falls_back_to_default(monkeypatch):
+    """Unknown model -> default (long) prompts. Operator can add a new
+    entry to _PROMPT_TABLE if they need a tuned set."""
+    from publisher.app import vlm_client as vc_mod
+
+    captured = []
+
+    def fake_fetch(image_url, *, timeout=10.0):
+        return "ZmFrZS1iYXNlNjQ="
+
+    def fake_generate(*, api_url, model, prompt, image_b64):
+        captured.append(prompt)
+        return "ok"
+
+    monkeypatch.setattr(vc_mod, "_fetch_image_b64", fake_fetch)
+    monkeypatch.setattr(vc_mod, "_ollama_generate", fake_generate)
+
+    c = VLMClient(backend="ollama", api_url="http://vlm:11434", model="brand-new-vlm")
+    c.describe(image_url="http://x/y.jpg", content_type="image/jpeg")
+
+    # Falls back to the default (long) set.
+    assert any("names of people" in p for p in captured)
+
+
 def test_vlm_ollama_backend_requires_api_url():
     """Empty VLM_API_URL must produce a clear error -- otherwise the
     pipeline degrades silently with a confusing httpx error."""
