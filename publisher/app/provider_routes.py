@@ -222,7 +222,13 @@ _PROVIDER_START_HTML = r"""<!DOCTYPE html>
       try {
         const url = new URL(`${ORIGIN}/verifier/request`);
         url.searchParams.set("vc_kind", VC_KIND);
-        url.searchParams.set("dataset_id", DS_HINT || "*");
+        // SellerVC isn't dataset-scoped at verify time; verifier_routes
+        // looks up presentation definitions per (vc_kind, dataset_id)
+        // and only registers SellerVC under the "*" sentinel. Passing
+        // the actual dataset hint here returns 404
+        // no_presentation_definition_for_dataset. The DS_HINT is purely
+        // a display label in the page header above.
+        url.searchParams.set("dataset_id", "*");
         url.searchParams.set("purpose", "publish");
         const r = await fetch(url, { headers: { Accept: "application/json" } });
         if (!r.ok) {

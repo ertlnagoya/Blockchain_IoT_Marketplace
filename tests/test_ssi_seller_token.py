@@ -222,6 +222,25 @@ def test_provider_start_accepts_optional_ds(client):
     assert "SellerVC" in r.text
 
 
+def test_provider_start_uses_wildcard_dataset_for_verifier_request(client):
+    """Regression: when the user passes ?ds=home/event/<...> the page
+    must still call /verifier/request with dataset_id=* (SellerVC isn't
+    dataset-scoped at verify time, and the verifier only registers
+    presentation definitions for SellerVC under the "*" sentinel).
+    Previously the page passed the literal hint through, which made the
+    verifier return 404 no_presentation_definition_for_dataset on real
+    devices."""
+    tc, _ = client
+    r = tc.get("/provider/start", params={"ds": "home/event/possible_littering"})
+    body = r.text
+    # The hint should still be visible in the page (display-only).
+    assert "home/event/possible_littering" in body
+    # But the verifier-bootstrap script must hard-code dataset_id="*".
+    assert 'url.searchParams.set("dataset_id", "*")' in body
+    # And it must NOT splice the literal hint into the verifier request.
+    assert 'searchParams.set("dataset_id", DS_HINT' not in body
+
+
 def test_seller_vc_response_returns_redirect_uri_to_provider_start(client):
     """c1: a successful SellerVC presentation must echo a redirect_uri
     pointing back at /provider/start?state=... so same-device wallets
