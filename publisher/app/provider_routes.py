@@ -426,6 +426,46 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
     .mode-title { font-weight: 600; color: #2e7d32; margin-bottom: 0.4rem; display:block; }
     .mode input[type=file] { width: 100%; }
     .rec-on { background: #c62828 !important; }
+    /* SIR analysis affordances */
+    .sir-bbox-overlay { position: relative; display: inline-block; max-width: 100%; }
+    .sir-bbox-overlay img { display: block; max-width: 100%; max-height: 320px; }
+    .sir-bbox-overlay .sir-bbox {
+      position: absolute; box-sizing: border-box;
+      border: 2px solid #d32f2f; background: rgba(211, 47, 47, 0.18);
+      pointer-events: none;
+    }
+    .sir-bbox-overlay .sir-bbox-label {
+      position: absolute; top: 0; left: 0; transform: translateY(-100%);
+      background: #d32f2f; color: #fff; font-size: 0.65rem;
+      padding: 1px 4px; border-radius: 3px; font-family: ui-monospace, Menlo, monospace;
+    }
+    .sir-tier-grid {
+      display: grid; gap: 0.6rem;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      margin-top: 0.5rem;
+    }
+    .sir-tier-card {
+      border: 1px solid #ddd; border-radius: 6px; padding: 0.6rem;
+      background: rgba(0,0,0,0.02); font-size: 0.85rem;
+    }
+    .sir-tier-card .tier-name {
+      font-weight: 600; font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #455a64; margin-bottom: 0.4rem;
+    }
+    .sir-tier-card .tier-kinds {
+      font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+      color: #666; margin-bottom: 0.3rem;
+    }
+    .sir-summary-row {
+      display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+      margin-block: 0.4rem; font-size: 0.85rem;
+    }
+    .sir-risk-pill {
+      padding: 2px 8px; border-radius: 999px; font-size: 0.75rem;
+      background: rgba(211, 47, 47, 0.15); color: #b71c1c;
+    }
+    .sir-risk-pill.low { background: rgba(76,175,80,0.15); color: #2e7d32; }
+    .sir-risk-pill.mid { background: rgba(255,152,0,0.18); color: #c77800; }
   </style>
 </head>
 <body>
@@ -461,6 +501,22 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
 
     <div class="preview" id="preview"></div>
     <div id="uploadResult"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>1.5 意味的中間表現を確認 <span class="pill">POST /semantic/analyze</span></legend>
+    <p class="meta">
+      アップロードしたフレームに含まれるセンシティブ領域（顔・テキスト・画面など）と、
+      閲覧者の信頼度別に何が見えるかを事前確認できます。サーバ側は分析結果を JSON
+      で返すだけで、フレームのバイト列は応答に含まれません。
+    </p>
+    <div class="row-fields" style="margin-top: 0.5rem">
+      <button class="btn secondary" id="analyzeBtn" type="button" disabled>分析を実行</button>
+      <span class="meta" id="analyzeStatus">アップロード後に有効になります</span>
+    </div>
+    <div id="sirResult" style="margin-top: 0.7rem"></div>
+    <div id="sirOverlay" style="margin-top: 0.7rem"></div>
+    <div id="sirTrustPreview" style="margin-top: 0.7rem"></div>
   </fieldset>
 
   <fieldset>
@@ -519,10 +575,17 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
     buyerLink.textContent = buyerUrl.toString();
 
     let lastUpload = null; // { url, cid, ipfs_gateway_url, content_type, byte_size }
+    let lastSourceBlob = null; // raw bytes for /semantic/analyze
     const preview = document.getElementById("preview");
     const uploadResult = document.getElementById("uploadResult");
     const publishBtn = document.getElementById("publishBtn");
     const publishHint = document.getElementById("publishHint");
+    // Stage T+ semantic pipeline UI handles
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const analyzeStatus = document.getElementById("analyzeStatus");
+    const sirResult = document.getElementById("sirResult");
+    const sirOverlay = document.getElementById("sirOverlay");
+    const sirTrustPreview = document.getElementById("sirTrustPreview");
 
     // ---- shared upload pipeline ----
     // All three input modes (file / capture / recorder) end up calling
@@ -568,6 +631,13 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
         `;
         publishBtn.disabled = false;
         publishHint.textContent = "発行する内容を確認して Publish を押してください";
+        // Stage T+ semantic pipeline: enable the analyze button and
+        // remember the source blob so we can re-POST it without
+        // re-fetching the (possibly /media-deduped) URL.
+        analyzeBtn.disabled = false;
+        analyzeStatus.textContent = "「分析を実行」を押すと SIR を確認できます";
+        analyzeBtn.dataset.sourceBlob = sourceLabel;  // for status only
+        lastSourceBlob = blob;
       } catch (e) {
         uploadResult.innerHTML = `<div class="err">network error: ${e.message || e}</div>`;
       }
@@ -582,6 +652,161 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
     }
     bindFileInput("filePick", "ファイル選択");
     bindFileInput("fileCapture", "カメラ撮影");
+
+    // Stage T+ semantic analysis. POSTs the same blob the upload
+    // pipeline used to /semantic/analyze, renders the resulting SIR
+    // (sensitive regions, scene summary, privacy_risk_score), and
+    // shows what 4 trust levels (anonymous/low/medium/high) would
+    // see for this frame. Only the analysis runs here -- nothing is
+    // published, sent externally, or written to /viewer state.
+    analyzeBtn.addEventListener("click", async () => {
+      if (!lastSourceBlob) {
+        analyzeStatus.textContent = "アップロードがまだです";
+        return;
+      }
+      analyzeBtn.disabled = true;
+      analyzeStatus.textContent = "サーバ側で分析中…";
+      sirResult.innerHTML = "";
+      sirOverlay.innerHTML = "";
+      sirTrustPreview.innerHTML = "";
+
+      let sir = null;
+      try {
+        const fd = new FormData();
+        const fname = (lastSourceBlob && lastSourceBlob.name) || "frame.jpg";
+        fd.append("file", lastSourceBlob, fname);
+        fd.append("source_device_id", "provider-page-" + (navigator.userAgent.match(/iPhone|iPad/) ? "iphone" : "browser"));
+        const r = await fetch(`${ORIGIN}/semantic/analyze`, { method: "POST", body: fd });
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        sir = await r.json();
+      } catch (e) {
+        sirResult.innerHTML = `<div class="err">analyze failed: ${e.message || e}</div>`;
+        analyzeBtn.disabled = false;
+        analyzeStatus.textContent = "もう一度試せます";
+        return;
+      }
+
+      // ---- summary line + risk pill ----
+      const risk = Number(sir.privacy_risk_score || 0);
+      const riskClass = risk < 0.3 ? "low" : (risk < 0.7 ? "mid" : "");
+      sirResult.innerHTML = `
+        <div class="ok">
+          <strong>分析完了</strong> (analyzer: <code>${escapeHtml(sir.analyzer_version)}</code>)
+        </div>
+        <div class="sir-summary-row">
+          <span class="sir-risk-pill ${riskClass}">privacy_risk_score: ${risk.toFixed(2)}</span>
+          <span>${escapeHtml(sir.scene_summary || "(scene_summary なし)")}</span>
+        </div>
+        <details>
+          <summary class="meta">SIR (raw JSON)</summary>
+          <pre style="background:#1e1e1e;color:#eaeaea;padding:0.6rem;border-radius:6px;overflow:auto;font-size:0.7rem">${escapeHtml(JSON.stringify(sir, null, 2))}</pre>
+        </details>
+      `;
+
+      // ---- bbox overlay on the preview image ----
+      if (lastUpload && lastUpload.url && (sir.sensitive_regions || []).length) {
+        renderBboxOverlay(sir, lastUpload.url);
+      }
+
+      // ---- per-tier disclosure preview ----
+      await renderTrustPreview(sir);
+
+      analyzeBtn.disabled = false;
+      analyzeStatus.textContent = "再分析もできます";
+    });
+
+    function renderBboxOverlay(sir, sourceUrl) {
+      const wrap = document.createElement("div");
+      wrap.className = "sir-bbox-overlay";
+      const img = document.createElement("img");
+      img.src = sourceUrl;
+      img.alt = "source frame with bbox overlay";
+      wrap.appendChild(img);
+
+      img.addEventListener("load", () => {
+        for (const region of sir.sensitive_regions || []) {
+          const bb = region.bbox || {};
+          const box = document.createElement("div");
+          box.className = "sir-bbox";
+          box.style.left = (bb.x * 100) + "%";
+          box.style.top = (bb.y * 100) + "%";
+          box.style.width = (bb.width * 100) + "%";
+          box.style.height = (bb.height * 100) + "%";
+          const lbl = document.createElement("span");
+          lbl.className = "sir-bbox-label";
+          lbl.textContent = `${region.type} ${(region.confidence || 0).toFixed(2)}`;
+          box.appendChild(lbl);
+          wrap.appendChild(box);
+        }
+      });
+      sirOverlay.innerHTML = "";
+      const title = document.createElement("p");
+      title.className = "meta";
+      title.textContent = "検出されたセンシティブ領域 (赤枠):";
+      sirOverlay.appendChild(title);
+      sirOverlay.appendChild(wrap);
+    }
+
+    async function renderTrustPreview(sir) {
+      const tiers = ["anonymous", "low", "medium", "high"];
+      const grid = document.createElement("div");
+      grid.className = "sir-tier-grid";
+      sirTrustPreview.innerHTML = "";
+      const title = document.createElement("p");
+      title.className = "meta";
+      title.textContent = "信頼度別の見え方プレビュー:";
+      sirTrustPreview.appendChild(title);
+      sirTrustPreview.appendChild(grid);
+
+      for (const t of tiers) {
+        const card = document.createElement("div");
+        card.className = "sir-tier-card";
+        card.innerHTML = `<div class="tier-name">${t}</div><div class="tier-kinds meta">…</div><div class="tier-text meta">…</div>`;
+        grid.appendChild(card);
+        // Fire-and-walk: each tier renders independently. Errors
+        // surface inline and don't block the others.
+        renderOneTier(t, sir, card).catch(err => {
+          card.querySelector(".tier-text").textContent = "render failed: " + (err.message || err);
+        });
+      }
+    }
+
+    async function renderOneTier(trust, sir, cardEl) {
+      const body = { trust_level: trust, sir };
+      // Only attach image_url when we have an upload URL AND the tier
+      // could actually consume it. anonymous / low never see images,
+      // so skip the fetch entirely there to save a /media GET.
+      if (lastUpload && lastUpload.url && trust !== "anonymous" && trust !== "low") {
+        body.image_url = lastUpload.url;
+      }
+      const r = await fetch(`${ORIGIN}/semantic/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        cardEl.querySelector(".tier-text").textContent = `HTTP ${r.status}`;
+        return;
+      }
+      const out = await r.json();
+      cardEl.querySelector(".tier-kinds").textContent = (out.granted_kinds || []).join(" + ") || "(none)";
+      cardEl.querySelector(".tier-text").textContent = out.text_summary || "(no summary)";
+      if (out.image_b64) {
+        const img = document.createElement("img");
+        img.src = `data:${out.image_content_type || "image/jpeg"};base64,${out.image_b64}`;
+        img.style.maxWidth = "100%";
+        img.style.maxHeight = "120px";
+        img.style.borderRadius = "4px";
+        img.style.marginTop = "0.4rem";
+        cardEl.appendChild(img);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]
+      ));
+    }
 
     // ---- MediaRecorder mode (PC ブラウザ録画) ----
     let mediaStream = null;

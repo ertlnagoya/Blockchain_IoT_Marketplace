@@ -388,6 +388,25 @@ def test_provider_page_offers_three_input_modes(client):
     assert "getUserMedia" in body
 
 
+def test_provider_page_wires_semantic_analysis_panel(client):
+    """Stage T+: the §1.5 panel must surface the analyze button +
+    DOM hooks the JS uses to render SIR results, bbox overlays, and
+    the per-tier disclosure preview."""
+    tc, _ = client
+    r = tc.get("/provider", params={"pt": "fake-token", "ds": "home/env/temperature"})
+    body = r.text
+    assert 'id="analyzeBtn"' in body
+    assert 'id="sirResult"' in body
+    assert 'id="sirOverlay"' in body
+    assert 'id="sirTrustPreview"' in body
+    # JS calls into both endpoints
+    assert "/semantic/analyze" in body
+    assert "/semantic/render" in body
+    # Tier preview iterates documented levels
+    assert '"anonymous"' in body
+    assert '"medium"' in body
+
+
 def test_provider_page_requires_pt_and_ds(client):
     tc, _ = client
     assert tc.get("/provider", params={"pt": "x"}).status_code == 422
