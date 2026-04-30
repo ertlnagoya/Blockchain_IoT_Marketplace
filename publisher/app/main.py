@@ -120,10 +120,18 @@ app.include_router(
 # Edge, Firefox.
 app.include_router(build_viewer_router())
 
-# Stage T (PWA provider, c1): /provider/start renders the provider-side
-# OID4VP loop (SellerVC presentation -> SellerToken). The actual
-# upload + publish UI lands in c2.
-app.include_router(build_provider_router())
+# Stage T (PWA provider): /provider/start (c1) + /provider (c2) +
+# /provider/publish (c2). The first two are HTML pages; the third is
+# a Bearer-SellerToken-gated wrapper around processor.process_message
+# whose dataset (resolved from the topic) must be in the SellerToken's
+# licensed_datasets.
+app.include_router(
+    build_provider_router(
+        ssi_state=ssi_state,
+        processor=processor,
+        audit_repo=audit_repo,
+    )
+)
 
 
 @app.on_event("startup")
