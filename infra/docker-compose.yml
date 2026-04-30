@@ -56,6 +56,11 @@ services:
       # the host) by setting VLM_API_URL in the shell before `up`.
       VLM_API_URL: ${VLM_API_URL:-http://vlm:11434}
       VLM_MODEL: ${VLM_MODEL:-llava}
+      # Per-call timeout for /api/generate. CPU-only LLaVA-7B on a
+      # 1024x1024 image needs 60-150s; describe() does it twice
+      # (full + summary). Default 180s per call ≈ 6 min worst case
+      # before degradation. Lower for GPU setups.
+      VLM_TIMEOUT_SEC: ${VLM_TIMEOUT_SEC:-180}
       IMAGE_REDACTION_BACKEND: ${IMAGE_REDACTION_BACKEND:-}
       SSI_ISSUER_BASE_URL: ${SSI_ISSUER_BASE_URL:-http://publisher:8080}
       SSI_ISSUER_KEY_PATH: /data/issuer_key.jwk.json

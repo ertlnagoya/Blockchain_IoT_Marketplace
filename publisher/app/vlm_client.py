@@ -59,7 +59,26 @@ _PROMPT_SUMMARY = (
 # timeout generous so the first-publish UX isn't a misleading
 # `vlm_unavailable` warning. The pipeline catches the timeout and
 # degrades gracefully if it does fire.
-_OLLAMA_TIMEOUT_SEC = 60.0
+#
+# Real-device finding (2026-04-30): a CPU-only LLaVA-7B inference on
+# a 1024x1024 image takes 60-150s for a single /api/generate call.
+# Two stages (full + summary) means the full describe() needs ~3-5
+# minutes worst case. Default of 180s per call (so describe() can
+# spend ~6 min before we degrade) covers most CPU setups; users with
+# GPU acceleration or smaller models can lower it via env. Override
+# with VLM_TIMEOUT_SEC if you have specific latency targets.
+_OLLAMA_TIMEOUT_SEC_DEFAULT = 180.0
+
+
+def _ollama_timeout() -> float:
+    import os
+    raw = os.environ.get("VLM_TIMEOUT_SEC", "").strip()
+    if not raw:
+        return _OLLAMA_TIMEOUT_SEC_DEFAULT
+    try:
+        return float(raw)
+    except ValueError:
+        return _OLLAMA_TIMEOUT_SEC_DEFAULT
 
 
 class VLMError(Exception):
@@ -122,7 +141,7 @@ def _ollama_generate(
         "stream": False,
     }
     try:
-        with httpx.Client(timeout=_OLLAMA_TIMEOUT_SEC) as client:
+        with httpx.Client(timeout=_ollama_timeout()) as client:
             r = client.post(endpoint, json=body)
             r.raise_for_status()
             payload = r.json()
