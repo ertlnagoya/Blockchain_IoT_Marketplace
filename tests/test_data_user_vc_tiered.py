@@ -1114,6 +1114,128 @@ def test_verifier_status_404_for_unknown_state(client):
     assert r.status_code == 404
 
 
+def test_verifier_request_uses_public_base_for_client_id(client):
+    """Cross-device fix: client_id MUST be the publicly reachable base
+    URL, not the Docker-internal one. Sphereon mobile-wallet trips up
+    on internal hostnames during cross-device flow."""
+    tc, _ = client
+    # Use an explicit Host header to mimic what a wallet on the LAN
+    # would see; the publisher should echo *that* URL back as client_id.
+    r = tc.get(
+        "/verifier/request",
+        params={
+            "vc_kind": "PurchaseViewerVC",
+            "purpose": "read",
+            "dataset_id": "home/env/temperature",
+        },
+        headers={
+            "accept": "application/json",
+            "host": "192.168.68.53:8080",
+            "x-forwarded-proto": "http",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    authz = body["authorization_request"]
+    assert authz["client_id"].startswith("http://"), authz["client_id"]
+    # client_id and response_uri should agree on the host part.
+    assert authz["client_id"] in authz["response_uri"]
+    # Critically: the Docker-internal "publisher" hostname must NOT
+    # leak into client_id (that's what the cross-device flow trips on).
+    assert "publisher:8080" not in authz["client_id"], authz["client_id"]
+
+
+def test_verifier_response_deny_includes_human_message(client):
+    """Stage T (PWA viewer): when /verifier/response denies a VC, the
+    response body must include human_message_ja/en so the buyer knows
+    what went wrong instead of seeing a generic 'Network request
+    failed' from the wallet."""
+    tc, _ = client
+    # Build a verification request bound to home/env/temperature, then
+    # present a VC bound to a DIFFERENT dataset so the post-PEX check
+    # hits the dataset_mismatch path.
+    req = tc.get(
+        "/verifier/request",
+        params={"dataset_id": "home/env/temperature", "vc_kind": "ViewerVC"},
+        headers={"accept": "application/json"},
+    ).json()
+    state = req["authorization_request"]["state"]
+
+    # Issue a ViewerVC for home/env/temperature, then present it as if
+    # for the (also-temperature) verifier request -- but we'll patch
+    # the post-PEX claims to cause a synthetic dataset_mismatch.
+    priv, pub, _ = _holder()
+    offer = tc.get(
+        "/issuer/offer",
+        params={"type": "ViewerVC", "dataset_id": "home/env/temperature", "purpose": "read"},
+        headers={"accept": "application/json"},
+    ).json()
+    token = tc.post(
+        "/issuer/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+            "pre-authorized_code": offer["pre_authorized_code"],
+        },
+    ).json()
+    proof = _proof(priv, pub, token["c_nonce"], "http://testserver")
+    cred = tc.post(
+        "/issuer/credential",
+        headers={"Authorization": f"Bearer {token['access_token']}"},
+        json={
+            "format": "vc+sd-jwt",
+            "vct": "https://iw3ip.example/credentials/ViewerVC/v1",
+            "proof": {"proof_type": "jwt", "jwt": proof},
+        },
+    ).json()
+
+    # Patch the local-PEX fallback to claim the VC was for a different
+    # dataset than the verifier requested -> deny path with reason
+    # "dataset_mismatch".
+    from unittest.mock import patch as _patch
+    with _patch(
+        "publisher.app.ssi.verifier_routes._safe_local_pex_fallback",
+        return_value={
+            "verified": True,
+            "claims": {
+                "dataset_id": "home/event/something_else",
+                "allowed_actions": ["read"],
+                "subject_id": "did:jwk:abc",
+            },
+            "holder_did": "did:jwk:abc",
+            "reason": "ok",
+        },
+    ):
+        sub = {
+            "id": "sub-viewer-temperature",
+            "definition_id": "viewer-temperature",
+            "descriptor_map": [
+                {"id": "viewer_vc_temperature", "format": "vc+sd-jwt", "path": "$"}
+            ],
+        }
+        r = tc.post(
+            "/verifier/response",
+            data={
+                "vp_token": cred["credential"],
+                "presentation_submission": json.dumps(sub),
+                "state": state,
+            },
+        )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "denied"
+    assert body["reason"] == "dataset_mismatch"
+    # Must surface a JA + EN human-readable line.
+    assert "human_message_ja" in body and "human_message_en" in body
+    assert "データセット" in body["human_message_ja"]
+    # /verifier/status should also echo the deny details for the
+    # cross-device polling page to render.
+    status = tc.get("/verifier/status", params={"state": state}).json()
+    assert status["result"]["verified"] is False
+    assert status["result"]["reason"] == "dataset_mismatch"
+    assert "human_message_ja" in status["result"]
+
+
 def test_provider_payload_carries_cid_when_ipfs_active(client_with_ipfs):
     """End-to-end: when IPFS is on, the upload response carries a CID,
     and a payload that folds it in surfaces image_cid at /platform/data

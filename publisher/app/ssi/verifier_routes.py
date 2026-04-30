@@ -42,6 +42,65 @@ def _vc_hash(vp_token: str) -> str:
     return "sha256:" + hashlib.sha256(compact.encode("utf-8")).hexdigest()
 
 
+# Stage T (PWA viewer): map verifier `reason` codes to human-readable
+# messages so /buyer/start, /viewer and the wallet can surface what
+# actually went wrong. Keep the JA strings short enough to render on a
+# phone in one or two lines; English mirrors the same idea.
+_DENY_HUMAN_MESSAGES: dict[str, dict[str, str]] = {
+    "dataset_mismatch": {
+        "ja": "提示された VC のデータセットが、要求されたデータセットと一致しません。",
+        "en": "The presented VC is bound to a different dataset.",
+    },
+    "action_not_allowed": {
+        "ja": "提示された VC では、このデータの読み取り権限がありません。",
+        "en": "The presented VC does not include the required action (read).",
+    },
+    "purpose_mismatch": {
+        "ja": "提示された VC の許可目的に、今回の用途が含まれていません。",
+        "en": "The presented VC's allowed_purposes does not cover this purpose.",
+    },
+    "missing_seller_id": {
+        "ja": "SellerVC に seller_id が含まれていません。",
+        "en": "SellerVC is missing seller_id.",
+    },
+    "missing_licensed_datasets": {
+        "ja": "SellerVC に出品許可データセットが含まれていません。",
+        "en": "SellerVC is missing licensed_datasets.",
+    },
+    "missing_entityType": {
+        "ja": "DataUserVC に entityType が含まれていません。",
+        "en": "DataUserVC is missing entityType.",
+    },
+    "missing_purpose": {
+        "ja": "DataUserVC に purpose が含まれていません。",
+        "en": "DataUserVC is missing purpose.",
+    },
+    "missing_dataHandlingPolicy": {
+        "ja": "DataUserVC に dataHandlingPolicy が含まれていません。",
+        "en": "DataUserVC is missing dataHandlingPolicy.",
+    },
+    "verification_failed": {
+        "ja": "VC の署名検証に失敗しました。",
+        "en": "VC verification failed.",
+    },
+}
+
+
+def _humanize_reason(reason: str) -> dict[str, str]:
+    """Turn a verifier-internal reason code into a JA/EN message pair.
+    Falls back to the raw code when we don't have a curated string yet
+    -- callers can still display it; the codes are user-readable enough
+    to be useful as a fallback."""
+    msg = _DENY_HUMAN_MESSAGES.get(reason)
+    if msg:
+        return {"reason": reason, "human_message_ja": msg["ja"], "human_message_en": msg["en"]}
+    return {
+        "reason": reason,
+        "human_message_ja": f"提示が拒否されました ({reason})。",
+        "human_message_en": f"Presentation denied ({reason}).",
+    }
+
+
 def _extract_sd_jwt_compact(raw_vp_token: str) -> str:
     """Pull the SD-JWT VC compact string out of whatever shape `vp_token` arrives in.
 
@@ -222,10 +281,17 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         req = deps.state.create_verification_request(pd_id, dataset_id, purpose, vc_kind=vc_kind)
 
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        # Stage T (PWA viewer + cross-device fix): client_id MUST match a
+        # URL the wallet can actually reach. The Docker-internal
+        # `issuer_base_url` (e.g. http://publisher:8080) trips up
+        # Sphereon mobile-wallet during cross-device flow because the
+        # wallet attempts to fetch client_metadata from the URL and
+        # times out -- the user then sees a generic "Network request
+        # failed". Use the externally-reachable base everywhere.
         authz = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
-            "client_id": deps.settings.issuer_base_url,
+            "client_id": public_base,
             "response_uri": f"{public_base}/verifier/response",
             "presentation_definition": pd,
             "nonce": req.nonce,
@@ -372,15 +438,17 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 ]
             }
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        # See note above /verifier/request — client_id + iss must match
+        # the URL the wallet can reach, not the Docker-internal one.
         payload = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
-            "client_id": deps.settings.issuer_base_url,
+            "client_id": public_base,
             "response_uri": f"{public_base}/verifier/response",
             "dcql_query": dcql,
             "nonce": req.nonce,
             "state": req.state,
-            "iss": deps.settings.issuer_base_url,
+            "iss": public_base,
             "aud": "https://self-issued.me/v2",
         }
         h_b64 = _b64u(_json_bytes(header))
@@ -639,7 +707,28 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 "policy_token_jti": pt.jti,
                 "expires_in": int(pt.expires_at - pt.issued_at),
             }
-        return {"status": "denied", "dataset_id": req.dataset_id, "reason": reason}
+        # Stage T (PWA viewer): record the deny on the verification
+        # request so /verifier/status can echo a human-readable message
+        # back to the long-polling /buyer/start page.
+        deny_human = _humanize_reason(reason)
+        deps.state.record_verification_result(
+            state,
+            {
+                "verified": False,
+                "reason": reason,
+                "human_message_ja": deny_human["human_message_ja"],
+                "human_message_en": deny_human["human_message_en"],
+                "dataset_id": req.dataset_id,
+                "vc_kind": req.vc_kind,
+            },
+        )
+        return {
+            "status": "denied",
+            "dataset_id": req.dataset_id,
+            "reason": reason,
+            "human_message_ja": deny_human["human_message_ja"],
+            "human_message_en": deny_human["human_message_en"],
+        }
 
     @router.get("/verifier/status")
     def verifier_status(request: Request, state: str = Query(...)) -> dict:
