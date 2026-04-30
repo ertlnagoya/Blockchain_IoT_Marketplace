@@ -392,6 +392,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
 
     @router.post("/verifier/response")
     def verifier_response(
+        request: Request,
         vp_token: str = Form(...),
         state: str = Form(...),
         # Only sent for PEX (presentation_definition) responses. DCQL responses
@@ -527,6 +528,35 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     for k in ("merchandise_address", "buyer_eth_addr", "tx_hash"):
                         if claims.get(k) is not None:
                             resp[k] = claims[k]
+
+                # Stage T (PWA viewer):
+                # 1. stash viewer_token onto VerificationRequest.result so
+                #    /verifier/status (long-poll) can return it for the
+                #    PC cross-device flow.
+                # 2. add an OID4VP `redirect_uri` so OS-level deeplink
+                #    handlers (Sphereon mobile-wallet) bounce the user
+                #    straight into the publisher's /viewer page after a
+                #    successful same-device presentation.
+                deps.state.record_verification_result(
+                    state,
+                    {
+                        "verified": True,
+                        "reason": reason,
+                        "viewer_token": vt.token,
+                        "viewer_token_jti": vt.jti,
+                        "expires_in": int(vt.expires_at - vt.issued_at),
+                        "allowed_views": list(vt.allowed_views),
+                        "dataset_id": req.dataset_id,
+                        "vc_kind": req.vc_kind,
+                    },
+                )
+                public_base = externally_reachable_base_url(
+                    request, deps.settings.issuer_base_url
+                )
+                resp["redirect_uri"] = (
+                    f"{public_base.rstrip('/')}/viewer"
+                    f"?vt={vt.token}&ds={urllib.parse.quote(req.dataset_id)}"
+                )
                 return resp
             if req.vc_kind == "SellerVC":
                 seller_st = deps.state.create_seller_token(
@@ -612,15 +642,41 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         return {"status": "denied", "dataset_id": req.dataset_id, "reason": reason}
 
     @router.get("/verifier/status")
-    def verifier_status(state: str = Query(...)) -> dict:
+    def verifier_status(request: Request, state: str = Query(...)) -> dict:
+        """Verifier-state poll endpoint.
+
+        The PWA Buyer-Start page polls this every ~2 s while the user is
+        scanning a QR on a separate device. Once /verifier/response has
+        stashed a viewer_token onto the request's `result`, this echoes
+        it back along with a ready-to-redirect ``viewer_url`` so the
+        polling page can navigate to the data viewer.
+        """
         req = deps.state.find_verification_request(state)
         if not req:
             raise HTTPException(status_code=404, detail="unknown_or_expired_state")
-        return {
+
+        result = req.result or {}
+        out: dict = {
             "state": state,
-            "result": req.result,
+            "result": result,
             "dataset_id": req.dataset_id,
             "purpose": req.purpose,
+            "vc_kind": req.vc_kind,
         }
+        # When the verification has succeeded and minted a ViewerToken,
+        # surface a fully-formed `viewer_url` the polling page can redirect to.
+        if isinstance(result, dict) and result.get("verified") and result.get("viewer_token"):
+            public_base = externally_reachable_base_url(
+                request, deps.settings.issuer_base_url
+            )
+            out["viewer_token"] = result["viewer_token"]
+            out["allowed_views"] = result.get("allowed_views") or []
+            out["expires_in"] = result.get("expires_in")
+            out["viewer_url"] = (
+                f"{public_base.rstrip('/')}/viewer"
+                f"?vt={result['viewer_token']}"
+                f"&ds={urllib.parse.quote(req.dataset_id)}"
+            )
+        return out
 
     return router

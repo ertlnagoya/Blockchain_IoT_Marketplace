@@ -1028,6 +1028,92 @@ def test_ipfs_proxy_502_when_gateway_unreachable(client_with_ipfs):
     assert "ipfs_gateway_unreachable" in r.json()["detail"]
 
 
+# ---- Stage T PWA viewer: /viewer + /buyer/start + redirect_uri ----
+
+
+def test_viewer_page_renders_html_with_token(client):
+    tc, _ = client
+    r = tc.get("/viewer", params={"vt": "fake-token", "ds": "home/env/temperature"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    # Must contain the viewer_token + dataset_id so the page-side JS can
+    # fetch /platform/data without round-tripping back to the server.
+    assert "fake-token" in body
+    assert "home/env/temperature" in body
+    # Should pull image_url + image_cid into the rendering script.
+    assert "image_url" in body
+    assert "image_cid" in body
+
+
+def test_viewer_page_requires_query_params(client):
+    tc, _ = client
+    r = tc.get("/viewer", params={"vt": "fake-token"})  # no ds
+    assert r.status_code == 422
+    r = tc.get("/viewer", params={"ds": "home/env/temperature"})  # no vt
+    assert r.status_code == 422
+
+
+def test_buyer_start_page_renders_html(client):
+    tc, _ = client
+    r = tc.get("/buyer/start", params={"ds": "home/event/possible_littering"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    # Page bootstraps /verifier/request itself; just check the page wires
+    # the right arguments and references /verifier/status for the poll.
+    assert "home/event/possible_littering" in body
+    assert "/verifier/request" in body
+    assert "/verifier/status" in body
+    # QR rendering is client-side via qrcode-svg CDN.
+    assert "qrcode" in body.lower() or "QRCode" in body
+
+
+def test_verifier_response_returns_redirect_uri_for_purchase_viewer(client):
+    """PR #29 + PWA viewer: a successful PurchaseViewerVC presentation
+    must echo a `redirect_uri` pointing at /viewer?vt=...&ds=... so the
+    OS-level wallet handoff can land the buyer on the data viewer."""
+    tc, _ = client
+    presented = _purchase_viewer_token(
+        tc, allowed_views_in_claim=["event", "image", "video"], tx_seed="a3"
+    )
+    assert presented["status"] == "allowed"
+    assert "redirect_uri" in presented, presented
+    assert presented["redirect_uri"].endswith(
+        f"/viewer?vt={presented['viewer_token']}&ds=home/env/temperature"
+    )
+
+
+def test_verifier_status_surfaces_viewer_url_after_success(client):
+    """The PC cross-device flow polls /verifier/status; once the wallet
+    has presented, the response must contain a ready-to-redirect
+    `viewer_url`."""
+    tc, _ = client
+    presented = _purchase_viewer_token(
+        tc, allowed_views_in_claim=["event", "image"], tx_seed="a4"
+    )
+    # Find the most recent verification request state by inspecting the
+    # publisher's in-memory store.
+    pm = __import__("publisher.app.main", fromlist=["app"])
+    states = list(pm.ssi_state._requests.keys())
+    # The most recent state is the one created by _purchase_viewer_token.
+    state = states[-1]
+    r = tc.get("/verifier/status", params={"state": state})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["viewer_token"] == presented["viewer_token"]
+    assert body["allowed_views"] == ["event", "image"]
+    assert body["viewer_url"].endswith(
+        f"/viewer?vt={presented['viewer_token']}&ds=home/env/temperature"
+    )
+
+
+def test_verifier_status_404_for_unknown_state(client):
+    tc, _ = client
+    r = tc.get("/verifier/status", params={"state": "nope-no-such-state"})
+    assert r.status_code == 404
+
+
 def test_provider_payload_carries_cid_when_ipfs_active(client_with_ipfs):
     """End-to-end: when IPFS is on, the upload response carries a CID,
     and a payload that folds it in surfaces image_cid at /platform/data
