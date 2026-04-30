@@ -50,7 +50,11 @@ services:
       #   VLM_BACKEND in {"", "stub", "ollama"}
       #   IMAGE_REDACTION_BACKEND in {"", "stub", "opencv"}
       VLM_BACKEND: ${VLM_BACKEND:-}
-      VLM_API_URL: ${VLM_API_URL:-}
+      # Default VLM_API_URL to the in-network ollama service so
+      # `docker compose --profile vlm up` works with VLM_BACKEND=ollama
+      # out of the box. Override (e.g. point at an external Ollama on
+      # the host) by setting VLM_API_URL in the shell before `up`.
+      VLM_API_URL: ${VLM_API_URL:-http://vlm:11434}
       VLM_MODEL: ${VLM_MODEL:-llava}
       IMAGE_REDACTION_BACKEND: ${IMAGE_REDACTION_BACKEND:-}
       SSI_ISSUER_BASE_URL: ${SSI_ISSUER_BASE_URL:-http://publisher:8080}
@@ -126,21 +130,53 @@ services:
     #   - "5001:5001"   # API
     #   - "8081:8080"   # gateway (8081 to avoid collision with publisher)
 
-  # Stage T (VLM extension) — placeholder service for `--profile vlm`.
-  # Δ2 (this PR): empty service definition exists so `docker compose
-  # --profile vlm up` succeeds and the publisher's VLM_BACKEND env var
-  # gets exercised end-to-end with the `stub` backend (no external
-  # model needed for the architecture smoke test).
-  # Δ3 (next PR): replace this with a real Ollama service that loads
-  # `llava` and exposes /api/generate, then flip the publisher's
-  # VLM_BACKEND default to `ollama` under the same profile.
+  # Stage T (VLM extension) — local multimodal model via Ollama.
+  # Activate with `--profile vlm`. The publisher posts to
+  # http://vlm:11434/api/generate with the model name from VLM_MODEL
+  # (default: `llava`). The model is pulled lazily on first request,
+  # so the first /provider/publish after `up` will be slow (~30s for
+  # llava-7b on Apple Silicon, longer on CPU-only x86).
+  #
+  # The `vlm-pull` sibling service is a one-shot that pulls the model
+  # at boot so the first user-facing request is already warm. Skip it
+  # if you want lazy pulling, or override VLM_MODEL to a different
+  # multimodal model (e.g. `llava:13b`, `bakllava`, `llava-llama3`).
   vlm:
-    image: alpine:3.20
+    image: ollama/ollama:latest
     container_name: iw3ip-vlm
     profiles: ["vlm"]
-    command: ["sh", "-c", "echo 'vlm placeholder (Δ3 will replace with ollama+llava)'; sleep infinity"]
+    volumes:
+      - vlm_models:/root/.ollama
+    # Ollama listens on 11434 by default. Inside the docker network
+    # the publisher reaches it via `http://vlm:11434`; the host port
+    # forward is optional (uncomment for ad-hoc CLI access).
+    # ports:
+    #   - "11434:11434"
+
+  vlm-pull:
+    image: ollama/ollama:latest
+    container_name: iw3ip-vlm-pull
+    profiles: ["vlm"]
+    depends_on:
+      - vlm
+    volumes:
+      - vlm_models:/root/.ollama
+    entrypoint: ["sh", "-c"]
+    # Wait briefly for the vlm service to be reachable, then pull the
+    # configured model. `restart: no` means this exits cleanly after
+    # the pull completes; subsequent `docker compose up` runs are
+    # no-ops (Ollama short-circuits when the model is already cached).
+    command:
+      - |
+        until ollama list 2>/dev/null; do sleep 1; done
+        ollama pull "${VLM_MODEL:-llava}"
+        echo "vlm model ${VLM_MODEL:-llava} ready"
+    environment:
+      OLLAMA_HOST: http://vlm:11434
+    restart: "no"
 
 volumes:
   publisher_data:
   ipfs_data:
   ipfs_export:
+  vlm_models:

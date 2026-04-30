@@ -30,7 +30,6 @@ from publisher.app.ssi.trust_score import evaluate, evaluate_from_claims
 from publisher.app.vlm_client import (
     VLMClient,
     VLMError,
-    VLMNotImplemented,
     VLMUnknownBackend,
 )
 from policy.engine import PolicyEngine
@@ -235,9 +234,60 @@ def test_vlm_stub_is_deterministic():
     assert a["description_summary"] == b["description_summary"]
 
 
-def test_vlm_ollama_backend_is_not_yet_implemented():
-    c = VLMClient(backend="ollama", api_url="http://ollama:11434", model="llava")
-    with pytest.raises(VLMNotImplemented):
+def test_vlm_ollama_backend_calls_http(monkeypatch):
+    """Δ3: ollama backend now does real HTTP. Mock the two helper
+    functions and assert the contract: image fetched once, generate
+    called twice (full + summary), returned dict carries the
+    publisher's response shape."""
+    from publisher.app import vlm_client as vc_mod
+
+    fetch_calls = []
+    generate_calls = []
+
+    def fake_fetch(image_url, *, timeout=10.0):
+        fetch_calls.append(image_url)
+        return "ZmFrZS1iYXNlNjQ="  # base64 of "fake-base64"
+
+    def fake_generate(*, api_url, model, prompt, image_b64):
+        generate_calls.append({"api_url": api_url, "model": model, "prompt": prompt})
+        if "WITHOUT identifying" in prompt:
+            return "An adult dropped something near a public location."
+        return "John Smith dropped a Coke bottle near the Hibiya station entrance."
+
+    monkeypatch.setattr(vc_mod, "_fetch_image_b64", fake_fetch)
+    monkeypatch.setattr(vc_mod, "_ollama_generate", fake_generate)
+
+    c = VLMClient(backend="ollama", api_url="http://vlm:11434", model="llava")
+    out = c.describe(image_url="http://publisher/media/abc.jpg", content_type="image/jpeg")
+
+    assert fetch_calls == ["http://publisher/media/abc.jpg"]
+    assert len(generate_calls) == 2  # full + summary
+    assert "John Smith" in out["description_full"]
+    assert "John Smith" not in out["description_summary"]
+    assert "An adult" in out["description_summary"]
+    assert out["description_model"] == "ollama/llava"
+
+
+def test_vlm_ollama_backend_requires_api_url():
+    """Empty VLM_API_URL must produce a clear error -- otherwise the
+    pipeline degrades silently with a confusing httpx error."""
+    c = VLMClient(backend="ollama", api_url="", model="llava")
+    with pytest.raises(VLMError, match="VLM_API_URL is empty"):
+        c.describe(image_url="http://example/x.jpg", content_type="image/jpeg")
+
+
+def test_vlm_ollama_backend_propagates_http_failure(monkeypatch):
+    """Network / HTTP errors must surface as VLMError so the pipeline
+    catches them and emits processing_warnings: ['vlm_unavailable'].
+    A bare httpx exception leaking through would become a 500."""
+    from publisher.app import vlm_client as vc_mod
+
+    def fake_fetch(image_url, *, timeout=10.0):
+        raise vc_mod.VLMError("simulated outage")
+
+    monkeypatch.setattr(vc_mod, "_fetch_image_b64", fake_fetch)
+    c = VLMClient(backend="ollama", api_url="http://vlm:11434", model="llava")
+    with pytest.raises(VLMError, match="simulated outage"):
         c.describe(image_url="http://example/x.jpg", content_type="image/jpeg")
 
 
@@ -279,6 +329,94 @@ def test_image_redactor_unknown_backend_raises():
     r = ImageRedactor(backend="bogus")
     with pytest.raises(RedactionUnknownBackend):
         r.blur_pii(image_url="http://example/x.jpg", content_type="image/jpeg")
+
+
+# ---------- (4b) ImageRedactor opencv backend (Δ3) ----------
+
+
+def test_image_redactor_opencv_round_trip(monkeypatch):
+    """Δ3: opencv backend fetches the source, runs the (mocked) blur,
+    POSTs back to /media/upload, and surfaces the response's url +
+    cid as image_url_redacted / image_cid_redacted."""
+    from publisher.app import image_redactor as ir_mod
+
+    fetch_calls = []
+    blur_calls = []
+    upload_calls = []
+
+    def fake_get(url, *, timeout=10.0):
+        fetch_calls.append(url)
+        # Returning bytes is enough; the test stubs out the actual
+        # cv2 decoding via the blur monkeypatch below.
+        class _R:
+            content = b"fake-source-bytes"
+            def raise_for_status(self):
+                pass
+        return _R()
+
+    class _Client:
+        def __init__(self, **_kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        get = staticmethod(fake_get)
+        def post(self, endpoint, files=None):
+            upload_calls.append({"endpoint": endpoint, "files_keys": list(files or {})})
+            class _R:
+                def raise_for_status(self): pass
+                @staticmethod
+                def json():
+                    return {
+                        "url": "http://publisher/media/redactedhash.jpg",
+                        "cid": "bafyredactedcid",
+                        "sha256": "redactedhash",
+                        "content_type": "image/jpeg",
+                        "byte_size": 100,
+                    }
+            return _R()
+
+    monkeypatch.setattr(ir_mod.httpx, "Client", _Client)
+
+    def fake_blur(image_bytes, *, ext):
+        blur_calls.append({"len": len(image_bytes), "ext": ext})
+        return b"fake-blurred-bytes"
+
+    monkeypatch.setattr(ir_mod, "_opencv_blur_faces", fake_blur)
+
+    r = ImageRedactor(backend="opencv")
+    out = r.blur_pii(
+        image_url="http://publisher/media/abc.jpg",
+        content_type="image/jpeg",
+    )
+
+    assert fetch_calls == ["http://publisher/media/abc.jpg"]
+    assert blur_calls == [{"len": len(b"fake-source-bytes"), "ext": ".jpg"}]
+    assert len(upload_calls) == 1
+    assert upload_calls[0]["endpoint"].endswith("/media/upload")
+    assert out["image_url_redacted"] == "http://publisher/media/redactedhash.jpg"
+    assert out["image_cid_redacted"] == "bafyredactedcid"
+
+
+def test_image_redactor_opencv_propagates_fetch_failure(monkeypatch):
+    """Source fetch failure must surface as RedactionError so the
+    pipeline catches it and emits processing_warnings."""
+    from publisher.app import image_redactor as ir_mod
+    import httpx
+
+    class _BadClient:
+        def __init__(self, **_kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def get(self, url, *, timeout=10.0):
+            raise httpx.ConnectError("simulated network failure")
+
+    monkeypatch.setattr(ir_mod.httpx, "Client", _BadClient)
+
+    r = ImageRedactor(backend="opencv")
+    with pytest.raises(RedactionError, match="failed to fetch"):
+        r.blur_pii(
+            image_url="http://publisher/media/abc.jpg",
+            content_type="image/jpeg",
+        )
 
 
 # ---------- (5) Pipeline integration: VLM + redactor wiring ----------
