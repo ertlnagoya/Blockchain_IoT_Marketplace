@@ -1069,6 +1069,31 @@ def test_viewer_page_requires_query_params(client):
     assert r.status_code == 422
 
 
+def test_viewer_page_wires_vlm_extension_keys(client):
+    """Stage T (VLM extension): /viewer's page-side JS must reference
+    the new keys it's expected to render: image_url_redacted,
+    image_cid_redacted, description_full, description_summary,
+    description_model, description_generated_at, processing_warnings.
+    A regression here means receivers won't see the redacted image or
+    the degrade warnings the spec promises."""
+    tc, _ = client
+    r = tc.get("/viewer", params={"vt": "fake-token", "ds": "home/env/temperature"})
+    body = r.text
+    # New media key (Tier 2+)
+    assert "image_url_redacted" in body
+    assert "image_cid_redacted" in body
+    # Description text fields
+    assert "description_full" in body
+    assert "description_summary" in body
+    # Audit fields (always passed through)
+    assert "description_model" in body
+    assert "description_generated_at" in body
+    # Degrade signal
+    assert "processing_warnings" in body
+    # Tier badge classification logic gains the new "summary" branch
+    assert "tier-summary" in body
+
+
 def test_buyer_start_page_renders_html(client):
     tc, _ = client
     r = tc.get("/buyer/start", params={"ds": "home/event/possible_littering"})

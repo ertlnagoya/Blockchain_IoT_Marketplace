@@ -120,6 +120,32 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
     .badge.tier-3 { background: rgba(76, 175, 80, 0.18); color: #2e7d32; }
     .badge.tier-2 { background: rgba(255, 152, 0, 0.20); color: #c77800; }
     .badge.tier-1 { background: rgba(158, 158, 158, 0.25); color: #555; }
+    /* Stage T (VLM extension): semantic-tier styling. */
+    .badge.tier-summary { background: rgba(96, 125, 139, 0.20); color: #455a64; }
+    .description {
+      background: #f5f5f5; padding: 0.75rem 1rem; border-radius: 6px;
+      border-left: 3px solid #2e7d32; margin-block: 0.5rem;
+    }
+    .description.summary { border-left-color: #c77800; }
+    .description-label {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em;
+      color: #666; margin-bottom: 0.3rem;
+    }
+    .warnings {
+      padding: 0.75rem 1rem; background: #fff7e6; border-radius: 6px;
+      border-left: 3px solid #f57c00; color: #8a6d3b; margin-block: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .warnings code {
+      background: rgba(245, 124, 0, 0.15); padding: 1px 6px; border-radius: 4px;
+      margin-inline: 2px; font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem;
+    }
+    .redacted-badge {
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em;
+      background: rgba(96, 125, 139, 0.20); color: #455a64;
+      padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+      vertical-align: middle;
+    }
     section { margin-block: 1rem; }
     .media { display: grid; gap: 0.75rem; }
     .media img, .media video {
@@ -201,10 +227,18 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
         const body = await r.json();
         const tier = (body.allowed_views || []).join("+") || "—";
         document.getElementById("tier").textContent = `tier: ${tier}`;
-        document.getElementById("tier").classList.add(
-          body.allowed_views?.includes("video") ? "tier-3" :
-          body.allowed_views?.includes("image") ? "tier-2" : "tier-1"
-        );
+        // Stage T (VLM extension): the badge picks up the new semantic
+        // tiers. With raw video -> tier-3, with raw image -> tier-2,
+        // with image_redacted (no raw image) -> tier-2 still (visual
+        // tier 2 either way), with description_summary only and no
+        // images -> the new "summary" tier; otherwise tier-1 (event-only).
+        const v = body.allowed_views || [];
+        const tierClass =
+          v.includes("video") ? "tier-3" :
+          v.includes("image") || v.includes("image_redacted") ? "tier-2" :
+          v.includes("description_summary") ? "tier-summary" :
+          "tier-1";
+        document.getElementById("tier").classList.add(tierClass);
         document.getElementById("meta").textContent =
           `${DS} • ${body.count} row${body.count === 1 ? "" : "s"}` +
           (body.seller_did ? ` • seller=${body.seller_did}` : "");
@@ -228,26 +262,90 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
       const card = el("section");
       const media = el("div", { class: "media" });
 
-      // image_url is the publisher-hosted URL (Stage T case B). When
-      // the producer used IPFS too (case C) image_cid + ipfs_gateway_url
-      // also exist; we just prefer image_url for the inline render
-      // because it's guaranteed-reachable on the buyer's network.
+      // Stage T media projection. Order of preference for the inline
+      // <img> rendering:
+      //   row.image_url          (Tier 3 raw, case B/C)
+      //   row.image_url_redacted (Tier 2+ blurred, VLM extension)
+      // We render whichever is present. Only one shows up at a time
+      // because /platform/data drops keys per allowed_views.
       if (row.image_url) {
         media.appendChild(el("img", { src: row.image_url, alt: "image" }));
+      } else if (row.image_url_redacted) {
+        const wrap = el("div");
+        const img = el("img", { src: row.image_url_redacted, alt: "redacted image" });
+        wrap.appendChild(img);
+        const tag = el("span", { class: "redacted-badge", text: "🔒 face/PII blurred" });
+        wrap.appendChild(tag);
+        media.appendChild(wrap);
       }
       if (row.video_url) {
         media.appendChild(el("video", { src: row.video_url, controls: "" }));
       }
       if (media.children.length) card.appendChild(media);
 
+      // Stage T (VLM extension): description_full / description_summary
+      // appear at Tier 2+ / Tier 1+ respectively. Show both when both
+      // are visible (Tier 2/3) so the receiver sees the contrast
+      // between named-entity detail and PII-scrubbed summary.
+      if (row.description_full) {
+        const box = el("div", { class: "description" });
+        box.appendChild(el("div", { class: "description-label", text: "VLM detailed (full)" }));
+        box.appendChild(el("p", { text: row.description_full }));
+        card.appendChild(box);
+      }
+      if (row.description_summary) {
+        const box = el("div", { class: "description summary" });
+        box.appendChild(el("div", { class: "description-label", text: "VLM summary (PII-redacted)" }));
+        box.appendChild(el("p", { text: row.description_summary }));
+        card.appendChild(box);
+      }
+
+      // Stage T (VLM extension): processing_warnings tells the receiver
+      // which derivative steps were degraded. The meaningful keys today
+      // are vlm_unavailable + redaction_unavailable; we render any
+      // future warnings transparently so the contract is forward-
+      // compatible.
+      if (Array.isArray(row.processing_warnings) && row.processing_warnings.length) {
+        const w = el("div", { class: "warnings" });
+        const intro = el("span", {
+          text: "⚠ 一部の派生データが省略されました: ",
+        });
+        w.appendChild(intro);
+        row.processing_warnings.forEach((name, i) => {
+          if (i > 0) w.appendChild(document.createTextNode(" "));
+          w.appendChild(el("code", { text: name }));
+        });
+        card.appendChild(w);
+      }
+
       // Surface the IPFS CID if present so the viewer doubles as
-      // proof-of-content-addressing.
+      // proof-of-content-addressing. Show the redacted variant too
+      // so receivers can audit which content-addressed bytes they
+      // actually got.
       if (row.image_cid) {
         card.appendChild(el("p", { class: "meta" },
           "IPFS CID: ",
           el("a", { class: "cid", href: `${ORIGIN}/ipfs/${row.image_cid}` },
             row.image_cid)
         ));
+      }
+      if (row.image_cid_redacted) {
+        card.appendChild(el("p", { class: "meta" },
+          "IPFS CID (redacted): ",
+          el("a", { class: "cid", href: `${ORIGIN}/ipfs/${row.image_cid_redacted}` },
+            row.image_cid_redacted)
+        ));
+      }
+
+      // Surface VLM model + generation time so the receiver knows
+      // exactly which inference produced description_*.
+      if (row.description_model) {
+        const meta = el("p", { class: "meta" });
+        meta.textContent = `VLM: ${row.description_model}`;
+        if (row.description_generated_at) {
+          meta.textContent += ` • generated ${row.description_generated_at}`;
+        }
+        card.appendChild(meta);
       }
 
       const ts = row.payload?.ts || row.ts || "";
