@@ -179,14 +179,23 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
           { headers: { Authorization: `Bearer ${VT}` } }
         );
         if (!r.ok) {
-          const err = await r.text();
-          root.appendChild(el("div", { class: "err",
-            text: `HTTP ${r.status}: ${err.slice(0, 240)}` }));
+          let detail = "";
+          try { detail = JSON.stringify(await r.json()); }
+          catch { detail = await r.text(); }
+          const banner = el("div", { class: "err" });
           if (r.status === 401) {
-            root.appendChild(el("p", {
-              text: "ViewerToken の TTL は 60 秒です。期限切れの場合は購入画面から再提示してください。"
-            }));
+            banner.innerHTML = `<strong>ViewerToken の有効期限が切れています</strong><br />` +
+              `読み取り権限を再取得するため、購入画面 (<a href="${ORIGIN}/buyer/start?ds=${encodeURIComponent(DS)}">/buyer/start</a>) からウォレットで再提示してください。`;
+          } else if (r.status === 403) {
+            banner.innerHTML = `<strong>このデータを閲覧する権限がありません</strong><br />` +
+              `提示された VC ではこのデータセットへのアクセスが許可されていません。`;
+          } else if (r.status === 404) {
+            banner.innerHTML = `<strong>データセットが見つかりません</strong><br />` +
+              `dataset_id=${DS} は publisher に登録されていない可能性があります。`;
+          } else {
+            banner.textContent = `HTTP ${r.status}: ${detail.slice(0, 240)}`;
           }
+          root.appendChild(banner);
           return;
         }
         const body = await r.json();
@@ -378,12 +387,35 @@ _BUYER_START_HTML = r"""<!DOCTYPE html>
           );
           if (r.ok) {
             const body = await r.json();
+            // Success: navigate to the data viewer.
             if (body.viewer_url) {
               window.location.href = body.viewer_url;
               return;
             }
+            // Stage T (PWA viewer): the verifier denied the
+            // presentation. Show the human-readable reason instead of
+            // looping forever.
+            const result = body.result;
+            if (result && result.verified === false) {
+              const root = document.getElementById("root");
+              const msg = result.human_message_ja
+                       || result.human_message_en
+                       || `Presentation denied (${result.reason || "unknown"}).`;
+              root.innerHTML = `
+                <div class="err">
+                  <strong>データを閲覧する権限がありません</strong><br />
+                  ${msg}
+                </div>
+                <p class="meta">
+                  reason code: <code>${result.reason || ""}</code>
+                </p>
+                <p>
+                  別の VC で試す場合は<a href="" onclick="location.reload();return false;">このページをリロード</a>してください。
+                </p>
+              `;
+              return;
+            }
           } else if (r.status === 404) {
-            // session expired
             const root = document.getElementById("root");
             root.innerHTML = `<div class="err">verifier session expired. リロードしてやり直してください。</div>`;
             return;
