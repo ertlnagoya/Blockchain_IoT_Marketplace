@@ -639,7 +639,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     seller_st.licensed_datasets,
                     int(seller_st.expires_at - seller_st.issued_at),
                 )
-                return {
+                resp = {
                     "status": "allowed",
                     "vc_kind": "SellerVC",
                     "seller_token": seller_st.token,
@@ -648,6 +648,34 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     "licensed_datasets": seller_st.licensed_datasets,
                     "expires_in": int(seller_st.expires_at - seller_st.issued_at),
                 }
+                # Stage T (PWA provider, c1):
+                # mirror what PurchaseViewerVC does -- stash the seller_token
+                # onto VerificationRequest.result so /verifier/status
+                # (long-poll) can echo it for the cross-device flow, and
+                # add an OID4VP redirect_uri pointing back at /provider/start
+                # with the same `state` so same-device flow can resume the
+                # poll after the wallet bounces back.
+                deps.state.record_verification_result(
+                    state,
+                    {
+                        "verified": True,
+                        "reason": reason,
+                        "seller_token": seller_st.token,
+                        "seller_token_jti": seller_st.jti,
+                        "seller_id": claims.get("seller_id"),
+                        "licensed_datasets": list(seller_st.licensed_datasets),
+                        "expires_in": int(seller_st.expires_at - seller_st.issued_at),
+                        "vc_kind": "SellerVC",
+                    },
+                )
+                public_base = externally_reachable_base_url(
+                    request, deps.settings.issuer_base_url
+                )
+                resp["redirect_uri"] = (
+                    f"{public_base.rstrip('/')}/provider/start"
+                    f"?state={urllib.parse.quote(state)}"
+                )
+                return resp
             if req.vc_kind == "DataUserVC":
                 # No token minted: DataUserVC presentation is informational
                 # (the publisher just confirms it can compute the trust score
@@ -766,6 +794,14 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 f"?vt={result['viewer_token']}"
                 f"&ds={urllib.parse.quote(req.dataset_id)}"
             )
+        # Stage T (PWA provider, c1): same idea for SellerVC. The polling
+        # /provider/start page only needs the seller_token + licensed_datasets
+        # to render its inline success panel; it does not navigate away.
+        if isinstance(result, dict) and result.get("verified") and result.get("seller_token"):
+            out["seller_token"] = result["seller_token"]
+            out["licensed_datasets"] = result.get("licensed_datasets") or []
+            out["expires_in"] = result.get("expires_in")
+            out["seller_id"] = result.get("seller_id")
         return out
 
     return router

@@ -190,3 +190,112 @@ def test_seller_token_unknown(client):
     _, pm = client
     _, reason = pm.ssi_state.use_seller_token("bogus", dataset_id="home/env/temperature")
     assert reason == "unknown"
+
+
+# ---- Stage T (PWA provider, c1): /provider/start + cross-device polling ----
+
+
+def test_provider_start_page_renders_html(client):
+    tc, _ = client
+    r = tc.get("/provider/start", params={"ds": "home/env/temperature"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    # Page should hard-code SellerVC as the vc_kind it asks for and
+    # bootstrap /verifier/request itself.
+    assert "SellerVC" in body
+    assert "/verifier/request" in body
+    assert "/verifier/status" in body
+    # Dataset hint should land in the page (so audit logs see what the
+    # provider intended even though SellerVC isn't dataset-bound).
+    assert "home/env/temperature" in body
+    # QR rendering is client-side via qrcode-svg CDN.
+    assert "qrcode" in body.lower() or "QRCode" in body
+
+
+def test_provider_start_accepts_optional_ds(client):
+    """ds is optional -- SellerVC verification isn't dataset-scoped, the
+    page just shows the hint when given."""
+    tc, _ = client
+    r = tc.get("/provider/start")
+    assert r.status_code == 200
+    assert "SellerVC" in r.text
+
+
+def test_seller_vc_response_returns_redirect_uri_to_provider_start(client):
+    """c1: a successful SellerVC presentation must echo a redirect_uri
+    pointing back at /provider/start?state=... so same-device wallets
+    can bounce the user back to the polling page."""
+    tc, _ = client
+    # _issue_seller_token already asserts status == "allowed".
+    # Inspect the raw /verifier/response by mirroring its setup.
+    priv, pub, _ = _holder()
+    offer = tc.get(
+        "/issuer/offer",
+        params={"type": "SellerVC", "seller_id": "ertl-001",
+                "licensed_datasets": "home/env/temperature"},
+        headers={"accept": "application/json"},
+    ).json()
+    token = tc.post(
+        "/issuer/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+            "pre-authorized_code": offer["pre_authorized_code"],
+        },
+    ).json()
+    proof = _proof(priv, pub, token["c_nonce"], "http://testserver")
+    cred = tc.post(
+        "/issuer/credential",
+        headers={"Authorization": f"Bearer {token['access_token']}"},
+        json={
+            "format": "vc+sd-jwt",
+            "vct": "https://iw3ip.example/credentials/SellerVC/v1",
+            "proof": {"proof_type": "jwt", "jwt": proof},
+        },
+    ).json()
+    req = tc.get(
+        "/verifier/request",
+        params={"vc_kind": "SellerVC"},
+        headers={"accept": "application/json"},
+    ).json()
+    state = req["authorization_request"]["state"]
+    sub = {
+        "id": "sub-seller-vc",
+        "definition_id": "seller-vc",
+        "descriptor_map": [{"id": "seller_vc", "format": "vc+sd-jwt", "path": "$"}],
+    }
+    body = tc.post(
+        "/verifier/response",
+        data={
+            "vp_token": cred["credential"],
+            "presentation_submission": json.dumps(sub),
+            "state": state,
+        },
+    ).json()
+    assert body["status"] == "allowed"
+    assert body["vc_kind"] == "SellerVC"
+    assert "redirect_uri" in body, body
+    # Must point at /provider/start with the same state so the resume
+    # branch in the page-side script picks it up.
+    assert "/provider/start" in body["redirect_uri"]
+    assert f"state={state}" in body["redirect_uri"]
+
+
+def test_verifier_status_surfaces_seller_token_after_success(client):
+    """c1: cross-device polling -- once SellerVC has been presented,
+    /verifier/status must echo seller_token + licensed_datasets so the
+    /provider/start page can render its inline success panel."""
+    tc, pm = client
+    seller_token, licensed = _issue_seller_token(tc)
+    # Most recent verification request state corresponds to the SellerVC
+    # presentation just issued by the helper.
+    state = list(pm.ssi_state._requests.keys())[-1]
+    r = tc.get("/verifier/status", params={"state": state})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["seller_token"] == seller_token
+    assert sorted(body["licensed_datasets"]) == sorted(licensed)
+    assert body["seller_id"] == "ertl-001"
+    # Inner result must record the verified=True branch.
+    assert body["result"]["verified"] is True
+    assert body["result"]["vc_kind"] == "SellerVC"
