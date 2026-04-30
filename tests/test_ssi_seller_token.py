@@ -299,3 +299,212 @@ def test_verifier_status_surfaces_seller_token_after_success(client):
     # Inner result must record the verified=True branch.
     assert body["result"]["verified"] is True
     assert body["result"]["vc_kind"] == "SellerVC"
+
+
+# ---- Stage T (PWA provider, c2): /provider page + /provider/publish ----
+
+
+def _seed_consent(pm, dataset_id: str, purposes: list[str]) -> None:
+    """Drop a ConsentVC into the publisher's in-process consent_store so
+    /provider/publish has something to match against. Mirrors how the
+    Stage T case-B/C tests bootstrap consent state. Also stubs out
+    platform_client.send so the pipeline doesn't try to ship the
+    accepted message to a non-existent HTTP endpoint during tests.
+    """
+    from datetime import datetime, timezone, timedelta
+    from policy.models import ConsentVC
+
+    now = datetime.now(timezone.utc)
+    pm.consent_store.upsert(
+        ConsentVC(
+            vc_id=f"c-provider-{dataset_id.replace('/', '-')}",
+            subject_did="did:example:provider",
+            dataset_id=dataset_id,
+            allowed_purposes=purposes,
+            retention_days=14,
+            reshare_allowed=False,
+            valid_from=now - timedelta(days=1),
+            valid_to=now + timedelta(days=30),
+            signature="x",
+        )
+    )
+    # In-process sink so process_message doesn't 500 on a missing platform
+    # endpoint and we can still assert status == "allowed".
+    sent: list[dict] = []
+    pm.processor.platform_client = type(
+        "_Sink", (), {"send": lambda self, env: sent.append(env)}
+    )()
+
+
+def test_provider_page_renders_html_with_pt_and_ds(client):
+    tc, _ = client
+    r = tc.get("/provider", params={"pt": "fake-token", "ds": "home/env/temperature"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    # The page hard-codes the token + dataset into the bootstrap script
+    # so the browser knows what to send to /provider/publish.
+    assert "fake-token" in body
+    assert "home/env/temperature" in body
+    # Page wires the two endpoints it talks to.
+    assert "/media/upload" in body
+    assert "/provider/publish" in body
+
+
+def test_provider_page_requires_pt_and_ds(client):
+    tc, _ = client
+    assert tc.get("/provider", params={"pt": "x"}).status_code == 422
+    assert tc.get("/provider", params={"ds": "x"}).status_code == 422
+
+
+def test_provider_publish_succeeds_for_licensed_dataset(client):
+    tc, pm = client
+    _seed_consent(pm, "home/event/possible_littering", ["community_cleaning"])
+    seller_token, _ = _issue_seller_token(
+        tc, licensed="home/event/possible_littering"
+    )
+    r = tc.post(
+        "/provider/publish",
+        headers={"Authorization": f"Bearer {seller_token}"},
+        json={
+            "topic": "homeassistant/event/possible_littering",
+            "purpose": "community_cleaning",
+            "payload": {
+                "event_type": "possible_littering",
+                "ts": "2026-04-29T09:00:00Z",
+                "source": "iw3ip-provider-page",
+                "image_url": "http://testserver/media/aaa.jpg",
+                "data": {"dataset_id": "home/event/possible_littering"},
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # SellerToken gate passed AND the pipeline accepted the message
+    # (matching ConsentVC seeded above).
+    assert body["status"] == "allowed", body
+    assert body["dataset_id"] == "home/event/possible_littering"
+    assert body.get("seller_token_jti")
+    assert body.get("register_count", 0) >= 1
+
+
+def test_provider_publish_requires_authorization(client):
+    tc, pm = client
+    _seed_consent(pm, "home/event/possible_littering", ["community_cleaning"])
+    r = tc.post(
+        "/provider/publish",
+        json={
+            "topic": "homeassistant/event/possible_littering",
+            "purpose": "community_cleaning",
+            "payload": {
+                "event_type": "possible_littering",
+                "ts": "2026-04-29T09:00:00Z",
+                "source": "iw3ip-provider-page",
+                "data": {},
+            },
+        },
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"] == "missing_authorization_header"
+
+
+def test_provider_publish_rejects_unlicensed_dataset(client):
+    """SellerToken licensed_datasets gate -- the topic resolves to a
+    dataset_id that isn't in the SellerVC's licensed_datasets list."""
+    tc, pm = client
+    _seed_consent(pm, "home/event/possible_littering", ["community_cleaning"])
+    # Issue a SellerToken licensed only for temperature/humidity, then
+    # try to publish to possible_littering.
+    seller_token, _ = _issue_seller_token(
+        tc,
+        licensed="home/env/temperature,home/env/humidity",
+    )
+    r = tc.post(
+        "/provider/publish",
+        headers={"Authorization": f"Bearer {seller_token}"},
+        json={
+            "topic": "homeassistant/event/possible_littering",
+            "purpose": "community_cleaning",
+            "payload": {
+                "event_type": "possible_littering",
+                "ts": "2026-04-29T09:00:00Z",
+                "source": "iw3ip-provider-page",
+                "data": {},
+            },
+        },
+    )
+    assert r.status_code == 403, r.text
+    assert "seller_token_dataset_not_licensed" in r.text
+
+
+def test_provider_publish_rejects_unknown_token(client):
+    tc, _ = client
+    r = tc.post(
+        "/provider/publish",
+        headers={"Authorization": "Bearer not-a-real-token"},
+        json={
+            "topic": "homeassistant/event/possible_littering",
+            "purpose": "community_cleaning",
+            "payload": {
+                "event_type": "possible_littering",
+                "ts": "2026-04-29T09:00:00Z",
+                "source": "iw3ip-provider-page",
+                "data": {},
+            },
+        },
+    )
+    assert r.status_code == 401
+    assert "seller_token_unknown" in r.text
+
+
+def test_provider_publish_rejects_unsupported_topic(client):
+    tc, _ = client
+    seller_token, _ = _issue_seller_token(tc)
+    r = tc.post(
+        "/provider/publish",
+        headers={"Authorization": f"Bearer {seller_token}"},
+        json={
+            "topic": "not/a/real/topic",
+            "purpose": "x",
+            "payload": {},
+        },
+    )
+    assert r.status_code == 400
+    assert "unsupported_topic" in r.text
+
+
+def test_provider_publish_is_multi_use_within_ttl(client):
+    """Multiple events back-to-back under one SellerToken -- mirrors the
+    expected hands-on flow where one wallet presentation covers a whole
+    upload session."""
+    tc, pm = client
+    _seed_consent(pm, "home/event/possible_littering", ["community_cleaning"])
+    seller_token, _ = _issue_seller_token(
+        tc, licensed="home/event/possible_littering"
+    )
+
+    def _publish(idx: int):
+        return tc.post(
+            "/provider/publish",
+            headers={"Authorization": f"Bearer {seller_token}"},
+            json={
+                "topic": "homeassistant/event/possible_littering",
+                "purpose": "community_cleaning",
+                "payload": {
+                    "event_type": "possible_littering",
+                    "ts": "2026-04-29T09:00:00Z",
+                    "source": "iw3ip-provider-page",
+                    "image_url": f"http://testserver/media/img-{idx}.jpg",
+                    "data": {},
+                },
+            },
+        )
+
+    counts: list[int] = []
+    for i in range(3):
+        r = _publish(i)
+        assert r.status_code == 200, r.text
+        counts.append(r.json()["register_count"])
+    # use_seller_token bumps register_count on every successful call.
+    assert counts == sorted(counts)
+    assert counts[-1] >= 3
