@@ -593,7 +593,15 @@ _PROVIDER_HTML = r"""<!DOCTYPE html>
     const recStatus = document.getElementById("recStatus");
 
     function pickRecorderMime() {
-      // Prefer VP9 then VP8 (Chromium/Firefox), fall back to MP4 (Safari 14.1+).
+      // Prefer VP9 then VP8. Real-device matrix on macOS (verified
+      // 2026-04-30 in iw3ip.github.io PR #29 §11.8 B/C/D):
+      //   Chrome 147:    all 4 supported -> picks VP9
+      //   Safari 17+:    all 4 supported -> picks VP9 (modern Safari
+      //                  has WebM/VP9 native support; the long-standing
+      //                  "Safari falls back to MP4" assumption only
+      //                  applies to Safari 16 and earlier)
+      //   Firefox 139:   only VP8 / webm -> picks VP8
+      // The MP4 entry stays for Safari 14.1-16 backwards compat.
       const candidates = [
         "video/webm;codecs=vp9,opus",
         "video/webm;codecs=vp8,opus",
