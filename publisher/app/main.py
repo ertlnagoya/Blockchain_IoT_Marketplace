@@ -165,6 +165,7 @@ app.include_router(
         analyzer=_semantic_analyzer,
         policy_engine=_trust_policy_engine,
         renderer=_trust_aware_renderer,
+        audit_repo=audit_repo,
     )
 )
 
