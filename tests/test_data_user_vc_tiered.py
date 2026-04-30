@@ -767,6 +767,21 @@ def test_media_upload_rejects_unknown_extension(client):
     assert r.status_code == 415
 
 
+def test_media_upload_accepts_iphone_quicktime(client):
+    """Regression: iPhone Safari's <input capture="environment"> records
+    video as .MOV (QuickTime). The server must accept it -- otherwise
+    the /provider page hits 415 immediately after the user finishes
+    recording on their phone."""
+    tc, _ = client
+    blob = b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00qt  " + b"\x00" * 32
+    body, ct = _multipart_body("recorded.MOV", "video/quicktime", blob)
+    r = tc.post("/media/upload", content=body, headers={"Content-Type": ct})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["content_type"] == "video/quicktime"
+    assert j["url"].endswith(f"/media/{j['sha256']}.mov")
+
+
 def test_media_get_rejects_path_traversal(client):
     tc, _ = client
     # urls with embedded slashes never match the path; this is a belt-and-braces check

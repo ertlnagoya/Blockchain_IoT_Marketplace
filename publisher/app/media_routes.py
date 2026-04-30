@@ -63,6 +63,10 @@ _ALLOWED_EXT = {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".m4v": "video/mp4",
+    # iPhone Safari `<input capture="environment">` saves recorded clips
+    # as QuickTime .mov; without this the /provider page hits 415 right
+    # after the user finishes recording on a phone.
+    ".mov": "video/quicktime",
 }
 
 
