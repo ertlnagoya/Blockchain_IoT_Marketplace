@@ -1069,6 +1069,20 @@ def test_viewer_page_requires_query_params(client):
     assert r.status_code == 422
 
 
+def test_viewer_page_wires_semantic_toggle(client):
+    """Stage T+: /viewer exposes an opt-in semantic toggle, the
+    trust-level derivation function, and the /semantic/render_url call
+    so a receiver can flip into trust-aware mode without reloading."""
+    tc, _ = client
+    r = tc.get("/viewer", params={"vt": "fake-token", "ds": "home/env/temperature"})
+    body = r.text
+    assert 'id="semanticToggle"' in body
+    assert "deriveTrustLevel" in body
+    assert "/semantic/render_url" in body
+    for level in ("anonymous", "low", "medium", "high"):
+        assert level in body
+
+
 def test_viewer_page_wires_vlm_extension_keys(client):
     """Stage T (VLM extension): /viewer's page-side JS must reference
     the new keys it's expected to render: image_url_redacted,

@@ -172,6 +172,14 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
   </header>
   <p class="meta" id="meta"></p>
 
+  <div style="margin-block:0.5rem">
+    <label style="font-size:0.85rem;color:#555;cursor:pointer">
+      <input type="checkbox" id="semanticToggle" />
+      🔬 意味的レンダリングを使う (実験) — /semantic/render_url 経由で信頼度別表示
+    </label>
+    <div class="meta" id="semanticInfo" style="margin-top:0.25rem"></div>
+  </div>
+
   <div id="root">
     <p>Loading…</p>
   </div>
@@ -248,13 +256,124 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
             text: "このデータセットにはまだイベントが届いていません。" }));
           return;
         }
-        for (const row of body.rows) {
-          root.appendChild(renderRow(row));
+        // Stage T+ opt-in: when the toggle is on, derive a viewer
+        // trust level from the body.allowed_views and replace each
+        // row's render with /semantic/render_url output. Default
+        // (toggle off) keeps the existing renderRow path.
+        const useSemantic = document.getElementById("semanticToggle").checked;
+        const semanticInfo = document.getElementById("semanticInfo");
+        if (useSemantic) {
+          const tl = deriveTrustLevel(body.allowed_views || []);
+          semanticInfo.textContent = `derived trust level: ${tl}`;
+          for (const row of body.rows) {
+            const card = el("section");
+            root.appendChild(card);
+            renderRowSemantic(card, row, tl).catch(err => {
+              card.innerHTML = "";
+              card.appendChild(el("div", { class: "err",
+                text: "semantic render failed: " + (err.message || err) }));
+            });
+          }
+        } else {
+          semanticInfo.textContent = "";
+          for (const row of body.rows) {
+            root.appendChild(renderRow(row));
+          }
         }
       } catch (e) {
         root.innerHTML = "";
         root.appendChild(el("div", { class: "err",
           text: `network error: ${e.message || e}` }));
+      }
+    }
+
+    // Map the existing Stage T allowed_views array to a
+    // ViewerTrustLevel. The mapping is intentionally conservative:
+    // empty / unknown -> anonymous, anything richer than text-only
+    // becomes medium or higher. The semantic pipeline's own policy
+    // engine then makes the final masking decisions, so a slightly
+    // generous mapping here doesn't relax fail-closed.
+    function deriveTrustLevel(allowedViews) {
+      const v = new Set(allowedViews);
+      if (v.has("video")) return "high";
+      if (v.has("image") || v.has("image_redacted")) return "medium";
+      if (v.has("description_summary") || v.has("description_full")) return "low";
+      if (v.has("event")) return "anonymous";
+      return "anonymous"; // fail-closed default
+    }
+
+    async function renderRowSemantic(card, row, trustLevel) {
+      // Decide which URL to feed the semantic pipeline. Prefer the
+      // raw image_url when present (HIGH viewers); fall back to
+      // image_url_redacted (MEDIUM/Tier-2 VLM); otherwise text-only.
+      const sourceUrl = row.image_url || row.image_url_redacted || null;
+      const reqBody = { trust_level: trustLevel };
+      if (sourceUrl) reqBody.image_url = sourceUrl;
+
+      // No image at all (Tier 1 / event-only): skip the network call
+      // and just render the row's existing payload as text.
+      let out;
+      if (!sourceUrl) {
+        out = {
+          trust_level: trustLevel,
+          granted_kinds: ["eventList"],
+          text_summary: row.payload?.event_type || row.event_type || "",
+          event_list: [],
+          rationale: "no source image; text-only path",
+        };
+      } else {
+        const r = await fetch(`${ORIGIN}/semantic/render_url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reqBody),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0,200)}`);
+        out = await r.json();
+      }
+
+      // Render the trust-aware result. Always show the granted_kinds
+      // and rationale so the receiver knows why they're seeing
+      // (or not seeing) image bytes.
+      card.innerHTML = "";
+      const head = el("div", { class: "meta" });
+      head.textContent = `[${out.trust_level}] kinds: ${(out.granted_kinds || []).join(" + ") || "(none)"}`;
+      card.appendChild(head);
+      if (out.image_b64) {
+        const img = el("img", {
+          src: `data:${out.image_content_type || "image/jpeg"};base64,${out.image_b64}`,
+          alt: "trust-aware rendered image",
+        });
+        img.style.maxWidth = "100%";
+        img.style.maxHeight = "360px";
+        img.style.borderRadius = "8px";
+        img.style.background = "#f3f3f3";
+        card.appendChild(img);
+      }
+      if (out.text_summary) {
+        const p = el("p");
+        p.textContent = out.text_summary;
+        card.appendChild(p);
+      }
+      if ((out.event_list || []).length) {
+        const ul = el("ul");
+        for (const ev of out.event_list) {
+          const li = el("li");
+          li.textContent = `${ev.type}: ${ev.description}`;
+          ul.appendChild(li);
+        }
+        card.appendChild(ul);
+      }
+      if (out.audit_required) {
+        const audit = el("p", { class: "meta" });
+        audit.style.color = "#b71c1c";
+        audit.textContent = "🛡 audit_required=true (owner/admin access)";
+        card.appendChild(audit);
+      }
+      if (out.rationale) {
+        const det = el("details");
+        det.appendChild(el("summary", { class: "meta", text: "policy rationale" }));
+        det.appendChild(el("pre", { text: out.rationale }));
+        card.appendChild(det);
       }
     }
 
@@ -357,6 +476,22 @@ _VIEWER_HTML = r"""<!DOCTYPE html>
       card.appendChild(detail);
       return card;
     }
+
+    // Re-run load() when the operator toggles the semantic switch
+    // so they can flip between legacy projection and the
+    // trust-aware semantic render without a hard reload. Persist
+    // the choice in localStorage so refreshing the page keeps the
+    // preference.
+    const semanticToggleEl = document.getElementById("semanticToggle");
+    semanticToggleEl.checked =
+      localStorage.getItem("iw3ip_viewer_semantic_mode") === "1";
+    semanticToggleEl.addEventListener("change", () => {
+      localStorage.setItem(
+        "iw3ip_viewer_semantic_mode",
+        semanticToggleEl.checked ? "1" : "0"
+      );
+      load();
+    });
 
     load();
   </script>
