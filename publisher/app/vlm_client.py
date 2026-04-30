@@ -38,21 +38,74 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# Two-stage prompts. The full prompt keeps named entities, the summary
-# prompt actively scrubs them. ASCII-only so they round-trip through
-# Ollama's JSON API without escaping surprises.
-_PROMPT_FULL = (
-    "Describe what is happening in this image as factually as possible. "
-    "Include any visible text, names of people if you can read name tags, "
-    "specific objects, brands, license plates, and locations. "
-    "Reply in 2-3 sentences."
+# Two-stage prompts, parameterised by model. The full prompt keeps
+# named entities; the summary prompt actively scrubs them. ASCII-only
+# so they round-trip through Ollama's JSON API without escaping
+# surprises.
+#
+# Real-device finding (2026-04-30, iw3ip.github.io PR #32): different
+# multimodal models have very different sensitivities to prompt length.
+#
+#   llava-7b:  responds well to long, detailed prompts (the "default"
+#              entries below). 280-char output for the full prompt,
+#              172 chars for summary. ~6 min per describe() on CPU.
+#   moondream: tiny VLM (1.7 GB). The long prompts make moondream
+#              return 3-10 char fragments; with simple short prompts
+#              it produces high-quality output ("A man with a beard
+#              and glasses... blurred green landscape"). ~21 s - 5 min
+#              on CPU.
+#
+# We pick prompts by matching ``model`` against the keys below; the
+# first prefix match wins, with ``default`` as the catch-all. To tune
+# for a new model, add a key matching its ollama tag (e.g. "bakllava"
+# -> short prompt set).
+_PROMPTS_DEFAULT = {
+    "full": (
+        "Describe what is happening in this image as factually as possible. "
+        "Include any visible text, names of people if you can read name tags, "
+        "specific objects, brands, license plates, and locations. "
+        "Reply in 2-3 sentences."
+    ),
+    "summary": (
+        "Summarize what is happening in this image WITHOUT identifying any "
+        "individual person, organization, named place, license plate, "
+        "vehicle make/model, or readable text. Use only generic terms like "
+        "'an adult', 'a vehicle', 'a public location'. Reply in 1-2 sentences."
+    ),
+}
+
+# Models that need short prompts to avoid truncated/garbled output.
+# Keep these terse enough that small VLMs answer in well-formed
+# sentences while still steering the privacy-aware contrast between
+# full and summary.
+_PROMPTS_SHORT = {
+    "full": "Describe this image including any visible names, brands, and locations.",
+    "summary": (
+        "Briefly describe what is happening in this image without naming "
+        "any people or specific places. Use generic terms like 'an adult' "
+        "or 'a public location'."
+    ),
+}
+
+# Per-backend prompt selection. Match by case-insensitive prefix on
+# the model name. Order matters: more-specific prefixes first.
+_PROMPT_TABLE = (
+    ("moondream", _PROMPTS_SHORT),
+    ("bakllava",  _PROMPTS_SHORT),  # roughly the same scale as moondream
+    ("llava",     _PROMPTS_DEFAULT),
 )
-_PROMPT_SUMMARY = (
-    "Summarize what is happening in this image WITHOUT identifying any "
-    "individual person, organization, named place, license plate, "
-    "vehicle make/model, or readable text. Use only generic terms like "
-    "'an adult', 'a vehicle', 'a public location'. Reply in 1-2 sentences."
-)
+
+
+def _prompts_for_model(model: str) -> dict:
+    """Return the {"full": ..., "summary": ...} prompt dict tuned for
+    `model`. Falls back to the long defaults so an unknown model still
+    gets a meaningful pair (with the risk of truncation on small
+    backends -- the operator can add a new entry to _PROMPT_TABLE)."""
+    m = (model or "").lower()
+    for prefix, prompts in _PROMPT_TABLE:
+        if m.startswith(prefix):
+            return prompts
+    return _PROMPTS_DEFAULT
 
 # Network budget. Ollama's first request after cold start can take a
 # while as the model warms; subsequent calls are fast. We keep the
@@ -210,20 +263,22 @@ class VLMClient:
         # bytes so we don't pay double bandwidth or risk getting two
         # different frames if the source URL is volatile.
         image_b64 = _fetch_image_b64(image_url)
+        prompts = _prompts_for_model(self.model)
         logger.info(
-            "vlm_describe_start backend=ollama model=%s url=%s bytes_b64=%d",
+            "vlm_describe_start backend=ollama model=%s url=%s bytes_b64=%d prompt_set=%s",
             self.model, image_url, len(image_b64),
+            "short" if prompts is _PROMPTS_SHORT else "default",
         )
         full = _ollama_generate(
             api_url=self.api_url,
             model=self.model,
-            prompt=_PROMPT_FULL,
+            prompt=prompts["full"],
             image_b64=image_b64,
         )
         summary = _ollama_generate(
             api_url=self.api_url,
             model=self.model,
-            prompt=_PROMPT_SUMMARY,
+            prompt=prompts["summary"],
             image_b64=image_b64,
         )
         logger.info(
