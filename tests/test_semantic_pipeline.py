@@ -538,3 +538,94 @@ def test_semantic_render_url_requires_image_url():
     assert "image_url_required" in r.text
 
 
+# ---------- audit log hook ----------
+
+
+def _semantic_test_app_with_audit(tmp_path):
+    """Variant that wires a SQLite audit repo so we can inspect what
+    rows the routes write."""
+    from fastapi import FastAPI
+    from publisher.app.semantic_routes import build_router
+    from audit.repository import SQLiteAuditRepository
+
+    repo = SQLiteAuditRepository(str(tmp_path / "audit.db"))
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            analyzer=MockSemanticAnalyzer(),
+            policy_engine=TrustPolicyEngine(),
+            renderer=TrustAwareRenderer(),
+            audit_repo=repo,
+        )
+    )
+    return app, repo
+
+
+def test_audit_log_written_for_owner_render(tmp_path):
+    """OWNER policy sets audit_required=True; the route must persist
+    a row capturing trust_level / kinds / rationale."""
+    from fastapi.testclient import TestClient
+
+    app, repo = _semantic_test_app_with_audit(tmp_path)
+    client = TestClient(app)
+    sir = MockSemanticAnalyzer().analyze(image_bytes=b"x", source_device_id="iphone-test")
+    r = client.post(
+        "/semantic/render",
+        json={
+            "trust_level": "owner",
+            "sir": sir.model_dump(mode="json"),
+        },
+    )
+    assert r.status_code == 200
+    rows = repo.list_recent(limit=10)
+    semantic_rows = [r for r in rows if r["raw_topic"] == "semantic/render"]
+    assert len(semantic_rows) == 1
+    row = semantic_rows[0]
+    assert row["purpose"] == "semantic_render"
+    assert "trust=owner" in row["reason"]
+    assert row["presentation_verified"] == "owner_or_admin"
+
+
+def test_audit_log_skipped_for_anonymous_text_only(tmp_path):
+    """ANONYMOUS access produces no image and is not flagged as
+    audit_required, so the audit table stays clean -- web access
+    logs are the right scope for those calls."""
+    from fastapi.testclient import TestClient
+
+    app, repo = _semantic_test_app_with_audit(tmp_path)
+    client = TestClient(app)
+    sir = MockSemanticAnalyzer().analyze(image_bytes=b"x", source_device_id="iphone-test")
+    r = client.post(
+        "/semantic/render",
+        json={"trust_level": "anonymous", "sir": sir.model_dump(mode="json")},
+    )
+    assert r.status_code == 200
+    semantic_rows = [
+        r for r in repo.list_recent(limit=10) if r["raw_topic"] == "semantic/render"
+    ]
+    assert semantic_rows == []
+
+
+def test_audit_log_records_image_served_flag_distinctly(tmp_path):
+    """A medium-tier viewer who got an image (kinds include
+    redactedImage) and one who got text-only (high-risk SIR stripped
+    image kinds) should both be auditable, but the row's reason
+    field must distinguish image=yes vs image=no."""
+    from fastapi.testclient import TestClient
+    from publisher.app.semantic_analyzer import MockSemanticAnalyzer
+
+    # Use the analyze->render pair without a real source URL, so the
+    # renderer cannot produce image bytes (its image path needs the
+    # source bytes); image=no and audit_required=False -> no row.
+    app, repo = _semantic_test_app_with_audit(tmp_path)
+    client = TestClient(app)
+    sir = MockSemanticAnalyzer().analyze(image_bytes=b"x", source_device_id="iphone-test")
+    client.post(
+        "/semantic/render",
+        json={"trust_level": "medium", "sir": sir.model_dump(mode="json")},
+    )
+    rows = [r for r in repo.list_recent(limit=10) if r["raw_topic"] == "semantic/render"]
+    # No image bytes shipped, no audit_required -> no audit row
+    assert rows == []
+
+

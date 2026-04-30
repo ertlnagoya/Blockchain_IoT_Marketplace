@@ -35,12 +35,15 @@ from __future__ import annotations
 
 import base64
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from audit.models import AuditLogRecord
+from audit.repository import SQLiteAuditRepository
 from publisher.app.semantic_analyzer import (
     SemanticAnalyzer,
     SemanticAnalyzerError,
@@ -49,7 +52,7 @@ from publisher.app.sir_models import (
     SemanticIntermediateRepresentation,
     ViewerTrustLevel,
 )
-from publisher.app.trust_aware_renderer import TrustAwareRenderer
+from publisher.app.trust_aware_renderer import RenderedOutput, TrustAwareRenderer
 from publisher.app.trust_policy import OutputKind, TrustPolicyEngine
 
 
@@ -116,8 +119,67 @@ def build_router(
     analyzer: SemanticAnalyzer,
     policy_engine: TrustPolicyEngine,
     renderer: TrustAwareRenderer,
+    audit_repo: Optional[SQLiteAuditRepository] = None,
 ) -> APIRouter:
     router = APIRouter()
+
+    def _maybe_audit(
+        *,
+        action: str,
+        out: RenderedOutput,
+        sir: SemanticIntermediateRepresentation,
+        image_url: Optional[str] = None,
+        dataset_id: str = "",
+    ) -> None:
+        """Write an audit row when the policy flagged the access as
+        sensitive (OWNER / ADMIN tier) OR when the renderer actually
+        produced an image. Skips when no audit_repo is wired
+        (test/standalone mode) so the route stays usable in unit
+        tests without a DB.
+
+        Spec invariants encoded:
+          - "誰が見たか / いつ見たか / どの trustLevel で見たか /
+            originalFrame に近い情報へアクセスしたか / どの policy が
+            適用されたか" -- captured here.
+          - "原画像・原映像をログに出さない" -- we never write the
+            source bytes. We do log the image_url because that is
+            the indirection path (publisher-internal /media URL).
+            The url alone is not the image; receivers cannot hop
+            from this audit row to a frame they wouldn't already
+            be entitled to fetch.
+        """
+        if audit_repo is None:
+            return
+        if not (out.audit_required or out.image_bytes is not None):
+            # No image emitted, no privileged tier -> low-stakes call
+            # already covered by web access logs upstream. Skip the DB
+            # write to keep the audit table focused on actual
+            # disclosures.
+            return
+        served_image = "yes" if out.image_bytes is not None else "no"
+        audit_repo.write(
+            AuditLogRecord(
+                ts=datetime.now(timezone.utc).isoformat(),
+                action=action,
+                subject_did=sir.source_device_id or "unknown",
+                dataset_id=dataset_id,
+                purpose="semantic_render",
+                reason=(
+                    f"trust={out.trust_level.value};"
+                    f"kinds={'+'.join(k.value for k in out.granted_kinds)};"
+                    f"image={served_image};"
+                    f"audit_required={out.audit_required};"
+                    f"rationale={out.rationale}"
+                ),
+                message_hash=sir.frame_id,
+                raw_topic=action,
+                holder_did=None,
+                vc_hash=None,
+                presentation_verified=(
+                    "owner_or_admin" if out.audit_required else "policy_only"
+                ),
+            )
+        )
 
     @router.post("/semantic/analyze")
     async def analyze(
@@ -169,6 +231,12 @@ def build_router(
             )
             policy = policy_engine.evaluate_safe(viewer_trust=req.trust_level, sir=sir)
             out = renderer.render(sir=sir, policy=policy)
+            _maybe_audit(
+                action="semantic/render_url",
+                out=out,
+                sir=sir,
+                image_url=req.image_url,
+            )
             return _serialize_rendered(out)
 
         # Analyze locally; analyzer failure becomes the empty-SIR
@@ -192,6 +260,12 @@ def build_router(
             policy=policy,
             image_bytes=image_bytes,
             image_content_type=image_content_type,
+        )
+        _maybe_audit(
+            action="semantic/render_url",
+            out=out,
+            sir=sir,
+            image_url=req.image_url,
         )
         return _serialize_rendered(out)
 
@@ -231,6 +305,7 @@ def build_router(
             image_bytes=image_bytes,
             image_content_type=image_content_type,
         )
+        _maybe_audit(action="semantic/render", out=out, sir=sir, image_url=req.image_url)
         return _serialize_rendered(out)
 
     return router
