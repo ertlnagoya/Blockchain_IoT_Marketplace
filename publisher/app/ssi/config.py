@@ -11,7 +11,7 @@ class SSISettings(BaseSettings):
     issuer_key_path: str = "/data/issuer_key.jwk.json"
     issuer_id: str = "iw3ip-publisher-issuer"
     credential_ttl_days: int = 365
-    offer_ttl_seconds: int = 600
+    offer_ttl_seconds: int = 1800
     pex_sidecar_url: str = "http://verifier-sidecar:7000"
     presentation_defs_dir: str = "/app/examples/ssi_wallet"
     response_ttl_seconds: int = 600
