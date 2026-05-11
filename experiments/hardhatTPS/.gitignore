@@ -1,0 +1,9 @@
+node_modules/
+artifacts/
+cache/
+typechain-types/
+scripts/accounts.json
+scripts/addresses.txt
+results/
+.env
+*.env
