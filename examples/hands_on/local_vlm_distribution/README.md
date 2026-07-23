@@ -120,8 +120,118 @@ Pick one and implement it yourself (no template):
   distribute the one with the highest `privacy_risk_score` (or a chosen object).
 - **New derived field**: add a field to the event `data` computed from the SIR
   (e.g. `people_count`) and confirm it survives publish.
-- **Custom analyzer**: implement a new `SemanticAnalyzer` backend in
-  `publisher/app/semantic_analyzer.py` (register it in `from_settings`) and point
-  `SEMANTIC_ANALYZER_BACKEND` at it.
+- **Custom analyzer**: implement a new `SemanticAnalyzer` backend (see section 4).
 - **Natural-language layer**: send the accumulated summaries to a local LLM and
   answer a free-text query (connects to the LLM Planner hands-on).
+
+## 4. Deep dive: write a custom SemanticAnalyzer backend
+
+`/semantic/analyze` runs whatever analyzer `SEMANTIC_ANALYZER_BACKEND` selects.
+Shipped backends live in `publisher/app/semantic_analyzer.py`:
+
+- `mock` / `stub` — deterministic SIR, no dependencies (the default)
+- `vision` / `opencv` — OpenCV Haar-cascade faces + simple heuristics
+
+Adding your own (a different detector, a real VLM, an Apple Vision bridge, …) is
+the intended extension point. You implement one method and register one branch.
+
+### 4.1 The interface
+
+```python
+from datetime import datetime, timezone
+
+from publisher.app.semantic_analyzer import SemanticAnalyzer, SemanticAnalyzerError
+from publisher.app.sir_models import (
+    SemanticIntermediateRepresentation,
+    PeopleSummary,
+    SensitiveRegion,
+    SensitiveRegionType,
+    BoundingBox,
+)
+
+
+class MyAnalyzer(SemanticAnalyzer):
+    # Embedded into the SIR's `analyzer_version` (survives in audit logs).
+    name = "my-analyzer/v1"
+
+    def analyze(
+        self, *, image_bytes: bytes, source_device_id: str
+    ) -> SemanticIntermediateRepresentation:
+        try:
+            # ... run your model on image_bytes ...
+            people = PeopleSummary(count=1)          # identities stays empty
+            regions = [
+                SensitiveRegion(
+                    type=SensitiveRegionType.FACE,
+                    confidence=0.9,
+                    bbox=BoundingBox(x=0.4, y=0.3, width=0.2, height=0.2),
+                    reason="detected face",
+                )
+            ]
+            return SemanticIntermediateRepresentation(
+                frame_id="frame-001",
+                source_device_id=source_device_id,
+                captured_at=datetime.now(timezone.utc),
+                scene_summary="one person, indoors",
+                people=people,
+                sensitive_regions=regions,
+                privacy_risk_score=0.4,
+                analyzer_version=self.name,
+            )
+        except Exception as exc:  # never let a raw error escape
+            raise SemanticAnalyzerError(str(exc)) from exc
+```
+
+### 4.2 Rules that keep it fail-closed
+
+- **Return an SIR, never raw pixels.** The whole point is that the image stays
+  in; only the structured meaning leaves.
+- **Wrap every failure in `SemanticAnalyzerError`.** A bare `cv2` / decode error
+  must not bubble up — the pipeline treats any `SemanticAnalyzerError` as
+  "decode failed → treat as private". When unsure, prefer
+  `SemanticIntermediateRepresentation.empty(frame_id=..., source_device_id=...,
+  analyzer_version=self.name)`.
+- **Leave `people.identities` empty.** Identifying individuals is a separate,
+  audit-logged concern; an analyzer never fills it in.
+- **`analyze()` must be re-entrant.** One instance is shared across requests, so
+  don't stash per-request state on `self`.
+
+### 4.3 Register and select it
+
+Add a branch to `SemanticAnalyzer.from_settings` in `semantic_analyzer.py`:
+
+```python
+backend = (getattr(settings, "semantic_analyzer_backend", "") or "").lower()
+if backend == "myanalyzer":
+    return MyAnalyzer()
+if backend in ("vision", "opencv"):
+    return VisionSemanticAnalyzer()
+return MockSemanticAnalyzer()
+```
+
+Then start the publisher with your backend selected:
+
+```bash
+export SEMANTIC_ANALYZER_BACKEND=myanalyzer
+docker compose -f infra/docker-compose.yml up -d publisher
+```
+
+Re-run `analyze_frame()` (step 2) and confirm `analyzer_version` in the SIR now
+reads `my-analyzer/v1`.
+
+### 4.4 SIR schema quick reference
+
+`SemanticIntermediateRepresentation` (see `publisher/app/sir_models.py`):
+
+| field | type | note |
+|---|---|---|
+| `frame_id` | str | your identifier for the frame |
+| `source_device_id` | str | pass through from the request |
+| `captured_at` | datetime | when the frame was captured (required) |
+| `scene_summary` | str | short free-text summary |
+| `objects` | list[DetectedObject] | `{label, confidence, bbox}` |
+| `people` | PeopleSummary | `{count, identities}` — keep `identities` empty |
+| `sensitive_regions` | list[SensitiveRegion] | `{type, confidence, bbox, reason}` |
+| `events` | list[DetectedEvent] | `{type, description}` |
+| `privacy_risk_score` | float 0–1 | drives fail-closed rendering |
+| `analyzer_version` | str | set to `self.name` |
