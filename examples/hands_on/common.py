@@ -46,6 +46,65 @@ def detect_lan_ip() -> str:
         sock.close()
 
 
+def post_multipart(
+    base_url: str,
+    path: str,
+    file_path: Path,
+    *,
+    fields: dict[str, str] | None = None,
+    content_type: str | None = None,
+    timeout: int = 60,
+) -> dict:
+    """POST a file (plus optional form fields) as multipart/form-data.
+
+    Generic sibling of ``upload_media``: ``upload_media`` always targets
+    ``/media/upload``, whereas this helper lets a hands-on script hit any
+    endpoint that expects a ``file`` field -- e.g. ``/semantic/analyze``.
+    Uses only the standard library so the exercises stay dependency-free.
+    """
+    import mimetypes
+    import uuid
+
+    body_bytes = file_path.read_bytes()
+    if content_type is None:
+        content_type = (
+            mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        )
+    boundary = "----iw3ip-" + uuid.uuid4().hex
+    crlf = b"\r\n"
+    parts: list[bytes] = []
+    for name, value in (fields or {}).items():
+        parts.append(f"--{boundary}".encode())
+        parts.append(f'Content-Disposition: form-data; name="{name}"'.encode())
+        parts.append(b"")
+        parts.append(str(value).encode())
+    parts.append(f"--{boundary}".encode())
+    parts.append(
+        (
+            f'Content-Disposition: form-data; name="file"; '
+            f'filename="{file_path.name}"'
+        ).encode()
+    )
+    parts.append(f"Content-Type: {content_type}".encode())
+    parts.append(b"")
+    parts.append(body_bytes)
+    parts.append(f"--{boundary}--".encode())
+    parts.append(b"")
+    body = crlf.join(parts)
+
+    req = request.Request(
+        base_url.rstrip("/") + path,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(body)),
+        },
+    )
+    with request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - local training endpoint
+        return json.load(resp)
+
+
 def upload_media(
     base_url: str,
     file_path: Path,
