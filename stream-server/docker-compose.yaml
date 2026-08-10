@@ -1,0 +1,14 @@
+services:
+    stream-server:
+        build:
+            context: .
+            args:
+                ENABLED_MODULES: rtmp
+        volumes:
+            - ./nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./auth.js:/auth.js
+            - ./scripts:/scripts
+            - ./recordings:/recordings
+        restart: unless-stopped
+        network_mode: "host"
+        
