@@ -1,0 +1,11 @@
+{
+  "vc_id": "local-vlm-distribution-consent-webcam-001",
+  "subject_did": "did:example:local-vlm-provider",
+  "dataset_id": "home/event/possible_littering",
+  "allowed_purposes": ["community_cleaning", "research"],
+  "retention_days": 30,
+  "reshare_allowed": false,
+  "valid_from": "2026-01-01T00:00:00Z",
+  "valid_to": "2099-12-31T23:59:59Z",
+  "signature": "PLACEHOLDER"
+}

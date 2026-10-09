@@ -15,6 +15,15 @@ from publisher.app.models import SimulatePublishRequest
 from publisher.app.mqtt_subscriber import MQTTSubscriber
 from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
+from publisher.app.image_redactor import ImageRedactor
+from publisher.app.media_routes import build_router as build_media_router
+from publisher.app.viewer_routes import build_router as build_viewer_router
+from publisher.app.provider_routes import build_router as build_provider_router
+from publisher.app.semantic_analyzer import SemanticAnalyzer
+from publisher.app.semantic_routes import build_router as build_semantic_router
+from publisher.app.trust_aware_renderer import TrustAwareRenderer
+from publisher.app.trust_policy import TrustPolicyEngine
+from publisher.app.vlm_client import VLMClient
 from publisher.app.ssi import issuer_routes, verifier_routes
 from publisher.app.ssi.config import SSISettings
 from publisher.app.ssi.keys import IssuerKeyStore
@@ -32,6 +41,13 @@ audit_repo = SQLiteAuditRepository(settings.audit_db_path)
 policy_engine = PolicyEngine()
 platform_client = PlatformClient(settings.platform_api_url)
 
+# Stage T (VLM extension): both injectors are None when their backend
+# settings are empty -- the pipeline then runs the legacy 3-tier path
+# unchanged. With `--profile vlm` (compose) the env vars get set and
+# the corresponding clients spin up.
+vlm_client = VLMClient.from_settings(settings)
+image_redactor = ImageRedactor.from_settings(settings)
+
 processor = MessageProcessor(
     publisher_id=settings.publisher_id,
     default_purpose=settings.default_purpose,
@@ -39,6 +55,8 @@ processor = MessageProcessor(
     policy_engine=policy_engine,
     audit_repo=audit_repo,
     platform_client=platform_client,
+    vlm_client=vlm_client,
+    image_redactor=image_redactor,
 )
 
 mqtt_subscriber = MQTTSubscriber(
@@ -97,6 +115,57 @@ app.include_router(
             audit_repo=audit_repo,
             pex_client=ssi_pex_client,
         )
+    )
+)
+# Stage T (case B): media gateway. POST /media/upload writes the blob,
+# GET /media/<sha>.<ext> serves it. Tier-aware projection in
+# /platform/data already filters image_url / video_url per tier.
+app.include_router(
+    build_media_router(
+        store_path=settings.media_store_path,
+        public_base_url=settings.media_public_base_url,
+        ipfs_api_url=settings.ipfs_api_url,
+        ipfs_gateway_url=settings.ipfs_gateway_url,
+    )
+)
+
+# Stage T (PWA viewer): /viewer + /buyer/start render the buyer-side
+# UX so neither phone nor PC needs to copy URLs by hand. Both pages
+# are plain HTML + small JS so they work uniformly on Safari, Chrome,
+# Edge, Firefox.
+app.include_router(build_viewer_router())
+
+# Stage T (PWA provider): /provider/start (c1) + /provider (c2) +
+# /provider/publish (c2). The first two are HTML pages; the third is
+# a Bearer-SellerToken-gated wrapper around processor.process_message
+# whose dataset (resolved from the topic) must be in the SellerToken's
+# licensed_datasets.
+app.include_router(
+    build_provider_router(
+        ssi_state=ssi_state,
+        processor=processor,
+        audit_repo=audit_repo,
+    )
+)
+
+# Stage T+ (semantic-tier pipeline): /semantic/analyze + /semantic/render.
+# These wrap the SemanticAnalyzer / TrustPolicyEngine / TrustAwareRenderer
+# so the /provider page (or any future iPhone-side client) can run the
+# fail-closed disclosure flow without re-implementing it. Production
+# viewer paths (/viewer + /platform/data) call into the renderer
+# directly with the ViewerToken context; /semantic/* is the dev /
+# integration affordance.
+_semantic_analyzer = SemanticAnalyzer.from_settings(settings)
+_trust_policy_engine = TrustPolicyEngine(
+    allow_unknown_at_high=settings.semantic_allow_unknown_at_high,
+)
+_trust_aware_renderer = TrustAwareRenderer()
+app.include_router(
+    build_semantic_router(
+        analyzer=_semantic_analyzer,
+        policy_engine=_trust_policy_engine,
+        renderer=_trust_aware_renderer,
+        audit_repo=audit_repo,
     )
 )
 
@@ -287,6 +356,50 @@ def platform_data(
         status = 401 if reason in ("unknown", "expired") else 403
         raise HTTPException(status_code=status, detail=f"viewer_token_{reason}")
     rows = [r for r in app.state.ingested if r.get("dataset_id") == dataset_id]
+
+    # Stage T (case alpha): project each row according to the
+    # ViewerToken's allowed_views. Tier 1 (event) hides image_cid /
+    # video_cid; Tier 2 (image) reveals image_cid; Tier 3 (video)
+    # reveals both. This is a strict allowlist: unknown view keys
+    # never leak.
+    allowed_views = vt.allowed_views or ["event"]
+
+    # Stage T (case B): media URLs (image_url / video_url) are filtered
+    # alongside the legacy CID keys. The two coexist so the same row can
+    # carry both an IPFS CID (Stage T case C) and a publisher-hosted
+    # URL during migration.
+    _IMAGE_KEYS = ("image_cid", "image_url")
+    _VIDEO_KEYS = ("video_cid", "video_url", "video_duration_sec")
+    # Stage T (VLM extension): image_redacted / description_full /
+    # description_summary are projected alongside the legacy keys.
+    # processing_warnings always passes through so receivers can see
+    # which derivatives were degraded.
+    _IMAGE_REDACTED_KEYS = ("image_url_redacted", "image_cid_redacted")
+    _DESCRIPTION_FULL_KEYS = ("description_full",)
+    _DESCRIPTION_SUMMARY_KEYS = ("description_summary",)
+    _AUDIT_KEYS = ("description_model", "description_generated_at")
+
+    def _project(row: dict) -> dict:
+        out: dict = {}
+        for k, v in row.items():
+            if k in _IMAGE_KEYS and "image" not in allowed_views:
+                continue
+            if k in _VIDEO_KEYS and "video" not in allowed_views:
+                continue
+            if k in _IMAGE_REDACTED_KEYS and "image_redacted" not in allowed_views:
+                continue
+            if k in _DESCRIPTION_FULL_KEYS and "description_full" not in allowed_views:
+                continue
+            if k in _DESCRIPTION_SUMMARY_KEYS and "description_summary" not in allowed_views:
+                continue
+            # _AUDIT_KEYS / processing_warnings: always pass through
+            # so the receiver knows which model produced the
+            # description_summary they're allowed to see.
+            out[k] = v
+        return out
+
+    rows = [_project(r) for r in rows]
+
     audit_repo.write(
         AuditLogRecord(
             ts=datetime.now(timezone.utc).isoformat(),
@@ -294,7 +407,10 @@ def platform_data(
             subject_did=vt.holder_did or "unknown",
             dataset_id=vt.dataset_id,
             purpose="read",
-            reason=f"viewer_token_used:{vt.jti}:{vt.read_count}",
+            reason=(
+                f"viewer_token_used:{vt.jti}:{vt.read_count}"
+                f":views={'+'.join(allowed_views) if allowed_views else 'none'}"
+            ),
             message_hash="",
             raw_topic="platform/data",
             holder_did=vt.holder_did,
@@ -314,6 +430,7 @@ def platform_data(
         "count": len(rows),
         "read_count": vt.read_count,
         "seller_did": seller_did or ("unknown" if merchandise else None),
+        "allowed_views": allowed_views,
         "rows": rows,
     }
 
@@ -343,12 +460,37 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         if not body.get(f):
             raise HTTPException(status_code=400, detail=f"missing_field:{f}")
 
+    # Stage T (case alpha): if the bridge / iot-market-ui includes the
+    # buyer's DataUserVC trust attributes in the claim body, evaluate
+    # the trust score now and bake the resulting allowed_views into the
+    # claim. Without these, allowed_views defaults to ["event"] (Tier 1).
+    allowed_views: list[str] | None = None
+    trust_score: int | None = None
+    access_level: str | None = None
+    data_user_attrs = body.get("data_user_attrs")
+    if isinstance(data_user_attrs, dict) and data_user_attrs:
+        from publisher.app.ssi.trust_score import evaluate_from_claims
+        # Stage T (VLM extension): when --profile vlm is on the
+        # marketplace claim mints a 4-tier allowed_views (full / access
+        # / summary / denied) that the /platform/data projector then
+        # uses. Off, the legacy 3-tier mapping is unchanged so existing
+        # tests keep their assertions valid.
+        evaluation = evaluate_from_claims(
+            data_user_attrs, vlm_profile=settings.vlm_enabled
+        )
+        allowed_views = list(evaluation.allowed_views)
+        trust_score = evaluation.trust_score
+        access_level = evaluation.access_level
+
     claim, created = ssi_state.create_marketplace_claim(
         merchandise_address=body["merchandise_address"],
         buyer_eth_addr=body["buyer_eth_addr"],
         tx_hash=body["tx_hash"],
         dataset_id=body["dataset_id"],
         purchase_amount_wei=str(body.get("purchase_amount_wei", "0")),
+        allowed_views=allowed_views,
+        trust_score=trust_score,
+        access_level=access_level,
     )
 
     # Stitch the claim's pre_authorized_code into a credential offer that
@@ -360,10 +502,18 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         # Reserve an Offer entry so /issuer/token can find the
         # pre_authorized_code we just minted. M3: PurchaseViewerVC
         # binds merchandise + tx + buyer_eth_addr to the issued credential.
+        # Stage T (case alpha) — pick a tier-aware credential_configuration_id
+        # so the wallet renders three distinct cards (Full / Image / Event-only).
+        from publisher.app.ssi.issuer_routes import (
+            purchase_viewer_config_id_for_access_level,
+        )
+        tier_cfg_id = purchase_viewer_config_id_for_access_level(
+            claim.access_level
+        )
         ssi_state._offers[claim.pre_authorized_code] = (  # noqa: SLF001
             __import__("publisher.app.ssi.state", fromlist=["Offer"]).Offer(
                 pre_authorized_code=claim.pre_authorized_code,
-                credential_config_id="PurchaseViewerVC",
+                credential_config_id=tier_cfg_id,
                 dataset_id=claim.dataset_id,
                 purpose="read",
                 allowed_purposes=["read"],
@@ -388,9 +538,18 @@ def marketplace_claim(body: dict, request: _Request) -> dict:
         )
 
     public_base = externally_reachable_base_url(request, ssi_settings.issuer_base_url)
+    # Stage T (case alpha) — point the deeplink at the tier-aware config id
+    # so the wallet labels the resulting card as Full / Image / Event-only.
+    if created:
+        deeplink_cfg_id = tier_cfg_id  # noqa: F821 — defined in `if created` above
+    else:
+        from publisher.app.ssi.issuer_routes import (
+            purchase_viewer_config_id_for_access_level as _resolve_cfg,
+        )
+        deeplink_cfg_id = _resolve_cfg(claim.access_level)
     co = {
         "credential_issuer": public_base,
-        "credential_configuration_ids": ["PurchaseViewerVC"],
+        "credential_configuration_ids": [deeplink_cfg_id],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": claim.pre_authorized_code,

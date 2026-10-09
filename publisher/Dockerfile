@@ -19,7 +19,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
         paho-mqtt \
         'cryptography>=42' \
         python-multipart \
-        'qrcode[pil]>=7'
+        'qrcode[pil]>=7' \
+        'opencv-python-headless>=4.8' \
+        'numpy>=1.26'
 
 EXPOSE 8080
 

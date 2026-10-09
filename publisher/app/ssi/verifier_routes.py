@@ -42,6 +42,65 @@ def _vc_hash(vp_token: str) -> str:
     return "sha256:" + hashlib.sha256(compact.encode("utf-8")).hexdigest()
 
 
+# Stage T (PWA viewer): map verifier `reason` codes to human-readable
+# messages so /buyer/start, /viewer and the wallet can surface what
+# actually went wrong. Keep the JA strings short enough to render on a
+# phone in one or two lines; English mirrors the same idea.
+_DENY_HUMAN_MESSAGES: dict[str, dict[str, str]] = {
+    "dataset_mismatch": {
+        "ja": "提示された VC のデータセットが、要求されたデータセットと一致しません。",
+        "en": "The presented VC is bound to a different dataset.",
+    },
+    "action_not_allowed": {
+        "ja": "提示された VC では、このデータの読み取り権限がありません。",
+        "en": "The presented VC does not include the required action (read).",
+    },
+    "purpose_mismatch": {
+        "ja": "提示された VC の許可目的に、今回の用途が含まれていません。",
+        "en": "The presented VC's allowed_purposes does not cover this purpose.",
+    },
+    "missing_seller_id": {
+        "ja": "SellerVC に seller_id が含まれていません。",
+        "en": "SellerVC is missing seller_id.",
+    },
+    "missing_licensed_datasets": {
+        "ja": "SellerVC に出品許可データセットが含まれていません。",
+        "en": "SellerVC is missing licensed_datasets.",
+    },
+    "missing_entityType": {
+        "ja": "DataUserVC に entityType が含まれていません。",
+        "en": "DataUserVC is missing entityType.",
+    },
+    "missing_purpose": {
+        "ja": "DataUserVC に purpose が含まれていません。",
+        "en": "DataUserVC is missing purpose.",
+    },
+    "missing_dataHandlingPolicy": {
+        "ja": "DataUserVC に dataHandlingPolicy が含まれていません。",
+        "en": "DataUserVC is missing dataHandlingPolicy.",
+    },
+    "verification_failed": {
+        "ja": "VC の署名検証に失敗しました。",
+        "en": "VC verification failed.",
+    },
+}
+
+
+def _humanize_reason(reason: str) -> dict[str, str]:
+    """Turn a verifier-internal reason code into a JA/EN message pair.
+    Falls back to the raw code when we don't have a curated string yet
+    -- callers can still display it; the codes are user-readable enough
+    to be useful as a fallback."""
+    msg = _DENY_HUMAN_MESSAGES.get(reason)
+    if msg:
+        return {"reason": reason, "human_message_ja": msg["ja"], "human_message_en": msg["en"]}
+    return {
+        "reason": reason,
+        "human_message_ja": f"提示が拒否されました ({reason})。",
+        "human_message_en": f"Presentation denied ({reason}).",
+    }
+
+
 def _extract_sd_jwt_compact(raw_vp_token: str) -> str:
     """Pull the SD-JWT VC compact string out of whatever shape `vp_token` arrives in.
 
@@ -139,9 +198,10 @@ def _local_pex_fallback(
                     "claims": claims,
                     "holder_did": None,
                 }
-    # SellerVC isn't dataset-scoped; the dataset check happens at
-    # /marketplace/register time against licensed_datasets.
-    if vc_kind != "SellerVC":
+    # SellerVC / DataUserVC aren't dataset-scoped; the dataset check
+    # happens at /marketplace/register time (SellerVC) or never
+    # (DataUserVC, which only feeds trust evaluation).
+    if vc_kind not in ("SellerVC", "DataUserVC"):
         if claims.get("dataset_id") != dataset_id:
             return {"verified": False, "reason": "dataset_mismatch", "claims": claims, "holder_did": None}
     if vc_kind in ("ViewerVC", "PurchaseViewerVC"):
@@ -157,6 +217,17 @@ def _local_pex_fallback(
             return {"verified": False, "reason": "missing_seller_id", "claims": claims, "holder_did": None}
         if not claims.get("licensed_datasets"):
             return {"verified": False, "reason": "missing_licensed_datasets", "claims": claims, "holder_did": None}
+    elif vc_kind == "DataUserVC":
+        # All five trust attributes must be present so trust_score can be
+        # computed deterministically. legalCompliance / misuseRecord are
+        # booleans; entityType / purpose / dataHandlingPolicy are strings.
+        for k in ("entityType", "purpose", "dataHandlingPolicy"):
+            if not claims.get(k):
+                return {"verified": False, "reason": f"missing_{k}", "claims": claims, "holder_did": None}
+        if "legalCompliance" not in claims:
+            return {"verified": False, "reason": "missing_legalCompliance", "claims": claims, "holder_did": None}
+        if "misuseRecord" not in claims:
+            return {"verified": False, "reason": "missing_misuseRecord", "claims": claims, "holder_did": None}
     else:
         allowed = claims.get("allowed_purposes", [])
         if purpose not in allowed:
@@ -199,9 +270,9 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         purpose: str = Query("read"),
         vc_kind: str = Query("ConsentVC"),
     ):
-        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC", "SellerVC"):
+        if vc_kind not in ("ConsentVC", "ViewerVC", "ServiceVC", "PurchaseViewerVC", "SellerVC", "DataUserVC"):
             raise HTTPException(status_code=400, detail=f"unknown vc_kind: {vc_kind}")
-        if vc_kind != "SellerVC" and dataset_id == "*":
+        if vc_kind not in ("SellerVC", "DataUserVC") and dataset_id == "*":
             raise HTTPException(status_code=400, detail="dataset_id required for this vc_kind")
         match = deps.definitions.find_for_dataset(dataset_id, vc_kind=vc_kind)
         if not match:
@@ -210,10 +281,17 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         req = deps.state.create_verification_request(pd_id, dataset_id, purpose, vc_kind=vc_kind)
 
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        # Stage T (PWA viewer + cross-device fix): client_id MUST match a
+        # URL the wallet can actually reach. The Docker-internal
+        # `issuer_base_url` (e.g. http://publisher:8080) trips up
+        # Sphereon mobile-wallet during cross-device flow because the
+        # wallet attempts to fetch client_metadata from the URL and
+        # times out -- the user then sees a generic "Network request
+        # failed". Use the externally-reachable base everywhere.
         authz = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
-            "client_id": deps.settings.issuer_base_url,
+            "client_id": public_base,
             "response_uri": f"{public_base}/verifier/response",
             "presentation_definition": pd,
             "nonce": req.nonce,
@@ -241,6 +319,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
             "ServiceVC": "IW3IP Service VC を提示",
             "PurchaseViewerVC": "IW3IP Purchase Viewer VC を提示",
             "SellerVC": "IW3IP Seller VC を提示",
+            "DataUserVC": "IW3IP Data User VC を提示",
         }.get(vc_kind, "IW3IP Consent VC を提示")
         html = render_qr_page(
             title=title,
@@ -307,6 +386,24 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     }
                 ]
             }
+        elif req.vc_kind == "DataUserVC":
+            dcql = {
+                "credentials": [
+                    {
+                        "id": "data_user_vc",
+                        "format": "dc+sd-jwt",
+                        "meta": {"vct_values": ["https://iw3ip.example/credentials/DataUserVC/v1"]},
+                        "claims": [
+                            {"path": ["entityType"]},
+                            {"path": ["purpose"]},
+                            {"path": ["legalCompliance"]},
+                            {"path": ["dataHandlingPolicy"]},
+                            {"path": ["misuseRecord"]},
+                            {"path": ["subject_id"]},
+                        ],
+                    }
+                ]
+            }
         elif req.vc_kind == "PurchaseViewerVC":
             dcql = {
                 "credentials": [
@@ -341,15 +438,17 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 ]
             }
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
+        # See note above /verifier/request — client_id + iss must match
+        # the URL the wallet can reach, not the Docker-internal one.
         payload = {
             "response_type": "vp_token",
             "response_mode": "direct_post",
-            "client_id": deps.settings.issuer_base_url,
+            "client_id": public_base,
             "response_uri": f"{public_base}/verifier/response",
             "dcql_query": dcql,
             "nonce": req.nonce,
             "state": req.state,
-            "iss": deps.settings.issuer_base_url,
+            "iss": public_base,
             "aud": "https://self-issued.me/v2",
         }
         h_b64 = _b64u(_json_bytes(header))
@@ -361,6 +460,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
 
     @router.post("/verifier/response")
     def verifier_response(
+        request: Request,
         vp_token: str = Form(...),
         state: str = Form(...),
         # Only sent for PEX (presentation_definition) responses. DCQL responses
@@ -405,8 +505,11 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         # Phase 2/3 belt-and-braces purpose/action check after PEX
         claims = result.get("claims") or {}
         if verified:
-            # SellerVC isn't dataset-bound; skip the dataset_id check
-            if req.vc_kind != "SellerVC" and claims.get("dataset_id") not in (None, req.dataset_id):
+            # SellerVC / DataUserVC aren't dataset-bound; skip dataset_id check
+            if (
+                req.vc_kind not in ("SellerVC", "DataUserVC")
+                and claims.get("dataset_id") not in (None, req.dataset_id)
+            ):
                 verified = False
                 reason = "dataset_mismatch"
             elif req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
@@ -426,6 +529,14 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 elif not claims.get("licensed_datasets"):
                     verified = False
                     reason = "missing_licensed_datasets"
+            elif req.vc_kind == "DataUserVC":
+                # Only check that the 5 attributes are present here.
+                # Trust score is computed at the marketplace claim step.
+                for k in ("entityType", "purpose", "dataHandlingPolicy"):
+                    if not claims.get(k):
+                        verified = False
+                        reason = f"missing_{k}"
+                        break
             else:
                 allowed = claims.get("allowed_purposes")
                 if allowed is not None and req.purpose not in allowed:
@@ -447,14 +558,27 @@ def build_router(deps: VerifierDeps) -> APIRouter:
         )
         if verified:
             if req.vc_kind in ("ViewerVC", "PurchaseViewerVC"):
+                # Stage T (case alpha): pull allowed_views from the VC's
+                # claims when present (PurchaseViewerVC) and propagate it
+                # to the ViewerToken; this gates the response projection
+                # at /platform/data. Defaults to ["event"] for VCs
+                # without the claim (back-compat).
+                allowed_views_claim = claims.get("allowed_views")
+                token_views = (
+                    list(allowed_views_claim)
+                    if isinstance(allowed_views_claim, list) and allowed_views_claim
+                    else ["event"]
+                )
                 vt = deps.state.create_viewer_token(
                     dataset_id=req.dataset_id,
                     holder_did=holder_did,
+                    allowed_views=token_views,
                 )
                 logger.info(
-                    "viewer_token_issued vc_kind=%s jti=%s token=%s dataset=%s ttl=%ss",
+                    "viewer_token_issued vc_kind=%s jti=%s token=%s dataset=%s ttl=%ss views=%s",
                     req.vc_kind, vt.jti, vt.token, vt.dataset_id,
                     int(vt.expires_at - vt.issued_at),
+                    "+".join(vt.allowed_views),
                 )
                 resp: dict = {
                     "status": "allowed",
@@ -463,6 +587,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     "viewer_token": vt.token,
                     "viewer_token_jti": vt.jti,
                     "expires_in": int(vt.expires_at - vt.issued_at),
+                    "allowed_views": vt.allowed_views,
                 }
                 # Surface marketplace context in the response so the
                 # iot-market-ui flow (M5) can correlate without re-decoding
@@ -471,6 +596,35 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     for k in ("merchandise_address", "buyer_eth_addr", "tx_hash"):
                         if claims.get(k) is not None:
                             resp[k] = claims[k]
+
+                # Stage T (PWA viewer):
+                # 1. stash viewer_token onto VerificationRequest.result so
+                #    /verifier/status (long-poll) can return it for the
+                #    PC cross-device flow.
+                # 2. add an OID4VP `redirect_uri` so OS-level deeplink
+                #    handlers (Sphereon mobile-wallet) bounce the user
+                #    straight into the publisher's /viewer page after a
+                #    successful same-device presentation.
+                deps.state.record_verification_result(
+                    state,
+                    {
+                        "verified": True,
+                        "reason": reason,
+                        "viewer_token": vt.token,
+                        "viewer_token_jti": vt.jti,
+                        "expires_in": int(vt.expires_at - vt.issued_at),
+                        "allowed_views": list(vt.allowed_views),
+                        "dataset_id": req.dataset_id,
+                        "vc_kind": req.vc_kind,
+                    },
+                )
+                public_base = externally_reachable_base_url(
+                    request, deps.settings.issuer_base_url
+                )
+                resp["redirect_uri"] = (
+                    f"{public_base.rstrip('/')}/viewer"
+                    f"?vt={vt.token}&ds={urllib.parse.quote(req.dataset_id)}"
+                )
                 return resp
             if req.vc_kind == "SellerVC":
                 seller_st = deps.state.create_seller_token(
@@ -485,7 +639,7 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     seller_st.licensed_datasets,
                     int(seller_st.expires_at - seller_st.issued_at),
                 )
-                return {
+                resp = {
                     "status": "allowed",
                     "vc_kind": "SellerVC",
                     "seller_token": seller_st.token,
@@ -493,6 +647,57 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                     "seller_id": claims.get("seller_id"),
                     "licensed_datasets": seller_st.licensed_datasets,
                     "expires_in": int(seller_st.expires_at - seller_st.issued_at),
+                }
+                # Stage T (PWA provider, c1):
+                # mirror what PurchaseViewerVC does -- stash the seller_token
+                # onto VerificationRequest.result so /verifier/status
+                # (long-poll) can echo it for the cross-device flow, and
+                # add an OID4VP redirect_uri pointing back at /provider/start
+                # with the same `state` so same-device flow can resume the
+                # poll after the wallet bounces back.
+                deps.state.record_verification_result(
+                    state,
+                    {
+                        "verified": True,
+                        "reason": reason,
+                        "seller_token": seller_st.token,
+                        "seller_token_jti": seller_st.jti,
+                        "seller_id": claims.get("seller_id"),
+                        "licensed_datasets": list(seller_st.licensed_datasets),
+                        "expires_in": int(seller_st.expires_at - seller_st.issued_at),
+                        "vc_kind": "SellerVC",
+                    },
+                )
+                public_base = externally_reachable_base_url(
+                    request, deps.settings.issuer_base_url
+                )
+                resp["redirect_uri"] = (
+                    f"{public_base.rstrip('/')}/provider/start"
+                    f"?state={urllib.parse.quote(state)}"
+                )
+                return resp
+            if req.vc_kind == "DataUserVC":
+                # No token minted: DataUserVC presentation is informational
+                # (the publisher just confirms it can compute the trust score
+                # and reports the result). Subsequent ViewerToken / Purchase
+                # flows pick up the trust evaluation via /marketplace/claim.
+                from publisher.app.ssi.trust_score import evaluate_from_claims
+                trust = evaluate_from_claims(claims)
+                logger.info(
+                    "data_user_vc_verified holder=%s entity=%s purpose=%s trust=%s level=%s",
+                    holder_did,
+                    claims.get("entityType"),
+                    claims.get("purpose"),
+                    trust.trust_score,
+                    trust.access_level,
+                )
+                return {
+                    "status": "allowed",
+                    "vc_kind": "DataUserVC",
+                    "trust_score": trust.trust_score,
+                    "access_level": trust.access_level,
+                    "allowed_views": trust.allowed_views,
+                    "holder_did": holder_did,
                 }
             if req.vc_kind == "ServiceVC":
                 st = deps.state.create_service_token(
@@ -530,18 +735,73 @@ def build_router(deps: VerifierDeps) -> APIRouter:
                 "policy_token_jti": pt.jti,
                 "expires_in": int(pt.expires_at - pt.issued_at),
             }
-        return {"status": "denied", "dataset_id": req.dataset_id, "reason": reason}
+        # Stage T (PWA viewer): record the deny on the verification
+        # request so /verifier/status can echo a human-readable message
+        # back to the long-polling /buyer/start page.
+        deny_human = _humanize_reason(reason)
+        deps.state.record_verification_result(
+            state,
+            {
+                "verified": False,
+                "reason": reason,
+                "human_message_ja": deny_human["human_message_ja"],
+                "human_message_en": deny_human["human_message_en"],
+                "dataset_id": req.dataset_id,
+                "vc_kind": req.vc_kind,
+            },
+        )
+        return {
+            "status": "denied",
+            "dataset_id": req.dataset_id,
+            "reason": reason,
+            "human_message_ja": deny_human["human_message_ja"],
+            "human_message_en": deny_human["human_message_en"],
+        }
 
     @router.get("/verifier/status")
-    def verifier_status(state: str = Query(...)) -> dict:
+    def verifier_status(request: Request, state: str = Query(...)) -> dict:
+        """Verifier-state poll endpoint.
+
+        The PWA Buyer-Start page polls this every ~2 s while the user is
+        scanning a QR on a separate device. Once /verifier/response has
+        stashed a viewer_token onto the request's `result`, this echoes
+        it back along with a ready-to-redirect ``viewer_url`` so the
+        polling page can navigate to the data viewer.
+        """
         req = deps.state.find_verification_request(state)
         if not req:
             raise HTTPException(status_code=404, detail="unknown_or_expired_state")
-        return {
+
+        result = req.result or {}
+        out: dict = {
             "state": state,
-            "result": req.result,
+            "result": result,
             "dataset_id": req.dataset_id,
             "purpose": req.purpose,
+            "vc_kind": req.vc_kind,
         }
+        # When the verification has succeeded and minted a ViewerToken,
+        # surface a fully-formed `viewer_url` the polling page can redirect to.
+        if isinstance(result, dict) and result.get("verified") and result.get("viewer_token"):
+            public_base = externally_reachable_base_url(
+                request, deps.settings.issuer_base_url
+            )
+            out["viewer_token"] = result["viewer_token"]
+            out["allowed_views"] = result.get("allowed_views") or []
+            out["expires_in"] = result.get("expires_in")
+            out["viewer_url"] = (
+                f"{public_base.rstrip('/')}/viewer"
+                f"?vt={result['viewer_token']}"
+                f"&ds={urllib.parse.quote(req.dataset_id)}"
+            )
+        # Stage T (PWA provider, c1): same idea for SellerVC. The polling
+        # /provider/start page only needs the seller_token + licensed_datasets
+        # to render its inline success panel; it does not navigate away.
+        if isinstance(result, dict) and result.get("verified") and result.get("seller_token"):
+            out["seller_token"] = result["seller_token"]
+            out["licensed_datasets"] = result.get("licensed_datasets") or []
+            out["expires_in"] = result.get("expires_in")
+            out["seller_id"] = result.get("seller_id")
+        return out
 
     return router

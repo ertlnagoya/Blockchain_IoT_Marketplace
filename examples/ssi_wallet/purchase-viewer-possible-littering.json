@@ -1,7 +1,7 @@
 {
   "id": "purchase-viewer-possible-littering",
   "name": "PurchaseViewer VC for home/event/possible_littering",
-  "purpose": "Verify the wallet holds a PurchaseViewerVC bound to a Merchandise.Purchase tx for possible_littering events.",
+  "purpose": "Verify the wallet holds a PurchaseViewerVC bound to a Merchandise.Purchase tx for the possible_littering dataset.",
   "iw3ip_dataset_id": "home/event/possible_littering",
   "iw3ip_vc_kind": "PurchaseViewerVC",
   "input_descriptors": [
@@ -10,6 +10,10 @@
       "name": "PurchaseViewerVC (possible_littering)",
       "format": {
         "vc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256"],
+          "kb-jwt_alg_values": ["ES256"]
+        },
+        "dc+sd-jwt": {
           "sd-jwt_alg_values": ["ES256"],
           "kb-jwt_alg_values": ["ES256"]
         }
@@ -29,12 +33,7 @@
               "type": "string",
               "const": "home/event/possible_littering"
             }
-          },
-          { "path": ["$.allowed_actions"], "filter": { "type": "array" } },
-          { "path": ["$.merchandise_address"], "filter": { "type": "string" } },
-          { "path": ["$.buyer_eth_addr"], "filter": { "type": "string" } },
-          { "path": ["$.tx_hash"], "filter": { "type": "string" } },
-          { "path": ["$.subject_id"] }
+          }
         ]
       }
     }

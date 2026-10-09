@@ -14,6 +14,11 @@ services:
     container_name: iw3ip-publisher
     depends_on:
       - mosquitto
+    # Stage T (case C): when the `ipfs` compose profile is active, the
+    # operator should bring kubo up alongside the publisher and set
+    # IPFS_API_URL=http://ipfs:5001 / IPFS_GATEWAY_URL=http://ipfs:8080
+    # via the .env file. depends_on intentionally stays soft so case
+    # B-only deployments keep working without the kubo image.
     environment:
       MQTT_BROKER_HOST: mosquitto
       MQTT_BROKER_PORT: 1883
@@ -23,6 +28,46 @@ services:
       PUBLISHER_ID: publisher-001
       AUDIT_DB_PATH: /data/audit.db
       CONSENT_STORE_PATH: /data/consents.json
+      # Stage T (case B): media gateway store + (optional) public base URL
+      MEDIA_STORE_PATH: /data/media
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-}
+      # Stage T (case C): IPFS daemon endpoints. Activate with the
+      # `ipfs` compose profile -- when the kubo container is up the
+      # publisher mirrors every /media/upload into IPFS and proxies
+      # /ipfs/<cid> to the daemon's HTTP gateway. When the profile is
+      # off, both env vars stay empty and the gateway runs case B only.
+      IPFS_API_URL: ${IPFS_API_URL:-}
+      IPFS_GATEWAY_URL: ${IPFS_GATEWAY_URL:-}
+      # Stage T (VLM extension): semantic-level tier projection.
+      # Activate with the `vlm` compose profile -- when the env vars
+      # below are non-empty the publisher generates description_full /
+      # description_summary / image_url_redacted alongside the raw
+      # upload and /platform/data ships them per the tier projection
+      # in trust_score._level_to_views_vlm. When empty the publisher
+      # runs the legacy 3-tier path (image/video keys drop per tier)
+      # exactly as before, so existing tests and demos do not regress.
+      # Backends:
+      #   VLM_BACKEND in {"", "stub", "ollama"}
+      #   IMAGE_REDACTION_BACKEND in {"", "stub", "opencv"}
+      VLM_BACKEND: ${VLM_BACKEND:-}
+      # Default VLM_API_URL to the in-network ollama service so
+      # `docker compose --profile vlm up` works with VLM_BACKEND=ollama
+      # out of the box. Override (e.g. point at an external Ollama on
+      # the host) by setting VLM_API_URL in the shell before `up`.
+      VLM_API_URL: ${VLM_API_URL:-http://vlm:11434}
+      VLM_MODEL: ${VLM_MODEL:-llava}
+      # Per-call timeout for /api/generate. CPU-only LLaVA-7B on a
+      # 1024x1024 image needs 60-150s; describe() does it twice
+      # (full + summary). Default 180s per call ≈ 6 min worst case
+      # before degradation. Lower for GPU setups.
+      VLM_TIMEOUT_SEC: ${VLM_TIMEOUT_SEC:-180}
+      IMAGE_REDACTION_BACKEND: ${IMAGE_REDACTION_BACKEND:-}
+      # Stage T+ (semantic-tier pipeline). Backends:
+      #   ""     -> mock (deterministic stub; default)
+      #   "stub" -> alias of mock
+      #   "vision" -> OpenCV Haar + MSER
+      SEMANTIC_ANALYZER_BACKEND: ${SEMANTIC_ANALYZER_BACKEND:-}
+      SEMANTIC_ALLOW_UNKNOWN_AT_HIGH: ${SEMANTIC_ALLOW_UNKNOWN_AT_HIGH:-false}
       SSI_ISSUER_BASE_URL: ${SSI_ISSUER_BASE_URL:-http://publisher:8080}
       SSI_ISSUER_KEY_PATH: /data/issuer_key.jwk.json
       SSI_PEX_SIDECAR_URL: http://verifier-sidecar:7000
@@ -74,5 +119,75 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # Stage T (case C) — local IPFS daemon (kubo). Activate with
+  # `--profile ipfs`. The publisher mirrors every /media/upload into
+  # this daemon (`/api/v0/add`) and reverse-proxies /ipfs/<cid> to the
+  # daemon's HTTP gateway, so the wallet can dereference real
+  # content-addressed URLs without internet access.
+  ipfs:
+    image: ipfs/kubo:release
+    container_name: iw3ip-ipfs
+    profiles: ["ipfs"]
+    environment:
+      # Bind both the API and gateway to all interfaces so the
+      # publisher container can reach them inside the docker network.
+      IPFS_PROFILE: server
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_export:/export
+    # No host port-forward by default — the publisher proxies
+    # everything via /ipfs/<cid>. Uncomment for ad-hoc CLI access:
+    # ports:
+    #   - "5001:5001"   # API
+    #   - "8081:8080"   # gateway (8081 to avoid collision with publisher)
+
+  # Stage T (VLM extension) — local multimodal model via Ollama.
+  # Activate with `--profile vlm`. The publisher posts to
+  # http://vlm:11434/api/generate with the model name from VLM_MODEL
+  # (default: `llava`). The model is pulled lazily on first request,
+  # so the first /provider/publish after `up` will be slow (~30s for
+  # llava-7b on Apple Silicon, longer on CPU-only x86).
+  #
+  # The `vlm-pull` sibling service is a one-shot that pulls the model
+  # at boot so the first user-facing request is already warm. Skip it
+  # if you want lazy pulling, or override VLM_MODEL to a different
+  # multimodal model (e.g. `llava:13b`, `bakllava`, `llava-llama3`).
+  vlm:
+    image: ollama/ollama:latest
+    container_name: iw3ip-vlm
+    profiles: ["vlm"]
+    volumes:
+      - vlm_models:/root/.ollama
+    # Ollama listens on 11434 by default. Inside the docker network
+    # the publisher reaches it via `http://vlm:11434`; the host port
+    # forward is optional (uncomment for ad-hoc CLI access).
+    # ports:
+    #   - "11434:11434"
+
+  vlm-pull:
+    image: ollama/ollama:latest
+    container_name: iw3ip-vlm-pull
+    profiles: ["vlm"]
+    depends_on:
+      - vlm
+    volumes:
+      - vlm_models:/root/.ollama
+    entrypoint: ["sh", "-c"]
+    # Wait briefly for the vlm service to be reachable, then pull the
+    # configured model. `restart: no` means this exits cleanly after
+    # the pull completes; subsequent `docker compose up` runs are
+    # no-ops (Ollama short-circuits when the model is already cached).
+    command:
+      - |
+        until ollama list 2>/dev/null; do sleep 1; done
+        ollama pull "${VLM_MODEL:-llava}"
+        echo "vlm model ${VLM_MODEL:-llava} ready"
+    environment:
+      OLLAMA_HOST: http://vlm:11434
+    restart: "no"
+
 volumes:
   publisher_data:
+  ipfs_data:
+  ipfs_export:
+  vlm_models:

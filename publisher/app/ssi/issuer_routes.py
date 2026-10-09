@@ -16,7 +16,7 @@ from publisher.app.ssi.did_jwk import did_jwk_from_public_jwk, public_jwk_from_d
 from publisher.app.ssi.html import render_qr_page
 from publisher.app.ssi.keys import IssuerKeyStore
 from publisher.app.ssi.sdjwt import issue_sd_jwt_vc
-from publisher.app.ssi.state import SSIStateStore
+from publisher.app.ssi.state import Offer, SSIStateStore
 from publisher.app.ssi.url_utils import externally_reachable_base_url
 
 
@@ -28,8 +28,37 @@ SERVICE_VC_CONFIG_ID = "ServiceVC"
 SERVICE_VCT = "https://iw3ip.example/credentials/ServiceVC/v1"
 PURCHASE_VIEWER_VC_CONFIG_ID = "PurchaseViewerVC"
 PURCHASE_VIEWER_VCT = "https://iw3ip.example/credentials/PurchaseViewerVC/v1"
+# Stage T (case alpha) — tier-aware credential_configuration_ids so the
+# wallet renders three distinct cards (Full / Image / Event-only) for the
+# same VCT. The wallet's credential list shows display.name from these
+# entries; without the split, all three look identical.
+PURCHASE_VIEWER_VC_CONFIG_ID_FULL = "PurchaseViewerVC.full"
+PURCHASE_VIEWER_VC_CONFIG_ID_ACCESS = "PurchaseViewerVC.access"
+PURCHASE_VIEWER_VC_CONFIG_ID_EVENT = "PurchaseViewerVC.event"
+PURCHASE_VIEWER_VC_TIERED_CONFIG_IDS = (
+    PURCHASE_VIEWER_VC_CONFIG_ID,
+    PURCHASE_VIEWER_VC_CONFIG_ID_FULL,
+    PURCHASE_VIEWER_VC_CONFIG_ID_ACCESS,
+    PURCHASE_VIEWER_VC_CONFIG_ID_EVENT,
+)
+
+
+def purchase_viewer_config_id_for_access_level(
+    access_level: str | None,
+) -> str:
+    """Map an access_level (full / access / denied / None) to the
+    tier-specific credential_configuration_id. ``None`` and unknown
+    values fall back to the event-only tier so the wallet still renders
+    something sensible."""
+    if access_level == "full":
+        return PURCHASE_VIEWER_VC_CONFIG_ID_FULL
+    if access_level == "access":
+        return PURCHASE_VIEWER_VC_CONFIG_ID_ACCESS
+    return PURCHASE_VIEWER_VC_CONFIG_ID_EVENT
 SELLER_VC_CONFIG_ID = "SellerVC"
 SELLER_VCT = "https://iw3ip.example/credentials/SellerVC/v1"
+DATA_USER_VC_CONFIG_ID = "DataUserVC"
+DATA_USER_VCT = "https://iw3ip.example/credentials/DataUserVC/v1"
 
 # Backwards-compatible aliases for code/tests that imported the originals.
 CREDENTIAL_CONFIG_ID = CONSENT_VC_CONFIG_ID
@@ -46,6 +75,7 @@ VC_KIND_TO_VCT = {
     "ServiceVC": SERVICE_VCT,
     "PurchaseViewerVC": PURCHASE_VIEWER_VCT,
     "SellerVC": SELLER_VCT,
+    "DataUserVC": DATA_USER_VCT,
 }
 VC_KIND_TO_CONFIG_ID = {
     "ConsentVC": CONSENT_VC_CONFIG_ID,
@@ -53,6 +83,7 @@ VC_KIND_TO_CONFIG_ID = {
     "ServiceVC": SERVICE_VC_CONFIG_ID,
     "PurchaseViewerVC": PURCHASE_VIEWER_VC_CONFIG_ID,
     "SellerVC": SELLER_VC_CONFIG_ID,
+    "DataUserVC": DATA_USER_VC_CONFIG_ID,
 }
 
 DEEPLINK_SCHEME = "openid-credential-offer://"
@@ -94,6 +125,34 @@ def _credential_offer(base_url: str, pre_auth_code: str, config_id: str) -> dict
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": pre_auth_code,
             }
+        },
+    }
+
+
+def _purchase_viewer_config_entry(
+    common_alg: dict, *, display_en: str, display_ja: str
+) -> dict:
+    """Build a credential_configurations_supported entry for one
+    PurchaseViewerVC tier. All four entries share the VCT and claim
+    schema; only the human-readable display name differs."""
+    return {
+        **common_alg,
+        "vct": PURCHASE_VIEWER_VCT,
+        "scope": "PurchaseViewerVC",
+        "display": [
+            {"name": display_en, "locale": "en"},
+            {"name": display_ja, "locale": "ja"},
+        ],
+        "claims": {
+            "dataset_id": {"display": [{"name": "Dataset ID"}]},
+            "allowed_actions": {"display": [{"name": "Allowed actions"}]},
+            "allowed_views": {"display": [{"name": "Allowed views"}]},
+            "access_level": {"display": [{"name": "Trust tier"}]},
+            "merchandise_address": {"display": [{"name": "Merchandise contract"}]},
+            "buyer_eth_addr": {"display": [{"name": "Buyer ETH address"}]},
+            "tx_hash": {"display": [{"name": "Purchase tx hash"}]},
+            "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+            "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
         },
     }
 
@@ -160,6 +219,24 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                     "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
                 },
             },
+            DATA_USER_VC_CONFIG_ID: {
+                **common_alg,
+                "vct": DATA_USER_VCT,
+                "scope": "DataUserVC",
+                "display": [
+                    {"name": "IW3IP Data User Credential", "locale": "en"},
+                    {"name": "IW3IP データ利用者クレデンシャル", "locale": "ja"},
+                ],
+                "claims": {
+                    "entityType": {"display": [{"name": "Entity type"}]},
+                    "purpose": {"display": [{"name": "Purpose"}]},
+                    "legalCompliance": {"display": [{"name": "Legal compliance"}]},
+                    "dataHandlingPolicy": {"display": [{"name": "Data handling policy"}]},
+                    "misuseRecord": {"display": [{"name": "Misuse record"}]},
+                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
+                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
+                },
+            },
             SELLER_VC_CONFIG_ID: {
                 **common_alg,
                 "vct": SELLER_VCT,
@@ -175,24 +252,30 @@ def _credential_issuer_metadata(base_url: str, keys: IssuerKeyStore) -> dict:
                     "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
                 },
             },
-            PURCHASE_VIEWER_VC_CONFIG_ID: {
-                **common_alg,
-                "vct": PURCHASE_VIEWER_VCT,
-                "scope": "PurchaseViewerVC",
-                "display": [
-                    {"name": "IW3IP Purchase Viewer Credential", "locale": "en"},
-                    {"name": "IW3IP 購入閲覧クレデンシャル", "locale": "ja"},
-                ],
-                "claims": {
-                    "dataset_id": {"display": [{"name": "Dataset ID"}]},
-                    "allowed_actions": {"display": [{"name": "Allowed actions"}]},
-                    "merchandise_address": {"display": [{"name": "Merchandise contract"}]},
-                    "buyer_eth_addr": {"display": [{"name": "Buyer ETH address"}]},
-                    "tx_hash": {"display": [{"name": "Purchase tx hash"}]},
-                    "subject_id": {"display": [{"name": "Subject"}], "mandatory": False},
-                    "iw3ip_issuer": {"display": [{"name": "Issuer"}]},
-                },
-            },
+            PURCHASE_VIEWER_VC_CONFIG_ID: _purchase_viewer_config_entry(
+                common_alg,
+                display_en="IW3IP Purchase Viewer Credential",
+                display_ja="IW3IP 購入閲覧クレデンシャル",
+            ),
+            # Stage T (case alpha): tier-specific entries so the wallet
+            # shows three distinct cards. All three resolve to the same
+            # VCT (PURCHASE_VIEWER_VCT); the verifier DCQL filters on the
+            # `access_level` claim, not the config_id.
+            PURCHASE_VIEWER_VC_CONFIG_ID_FULL: _purchase_viewer_config_entry(
+                common_alg,
+                display_en="IW3IP Purchase Viewer (Full • event + image + video)",
+                display_ja="IW3IP 購入閲覧（Tier 3 / 動画まで）",
+            ),
+            PURCHASE_VIEWER_VC_CONFIG_ID_ACCESS: _purchase_viewer_config_entry(
+                common_alg,
+                display_en="IW3IP Purchase Viewer (Access • event + image)",
+                display_ja="IW3IP 購入閲覧（Tier 2 / 画像まで）",
+            ),
+            PURCHASE_VIEWER_VC_CONFIG_ID_EVENT: _purchase_viewer_config_entry(
+                common_alg,
+                display_en="IW3IP Purchase Viewer (Event-only)",
+                display_ja="IW3IP 購入閲覧（Tier 1 / イベントのみ）",
+            ),
         },
         "issuer": issuer_did,
         "jwks": {"keys": [keys.public_jwk]},
@@ -258,8 +341,8 @@ def build_router(deps: IssuerDeps) -> APIRouter:
     def issuer_offer(
         request: Request,
         type: str = Query("ConsentVC", alias="type"),
-        # SellerVC doesn't bind to a single dataset, so dataset_id is
-        # optional for it; required for everything else.
+        # SellerVC / DataUserVC don't bind to a single dataset, so
+        # dataset_id is optional for them; required for everything else.
         dataset_id: str | None = Query(default=None),
         purpose: str = Query("read"),
         seller_id: str | None = Query(default=None),
@@ -267,18 +350,31 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             default=None,
             description="Comma-separated dataset_ids the SellerVC licenses",
         ),
+        # Stage T (case alpha bug fix): when the bridge / iot-market-ui
+        # already minted a MarketplaceClaim and stashed an Offer keyed by
+        # claim.pre_authorized_code, /issuer/offer must reuse THAT offer
+        # rather than create a fresh one — otherwise the issuance loses
+        # the binding to merchandise / buyer / tx_hash / allowed_views.
+        claim_id: str | None = Query(default=None),
+        # Stage T (case alpha): DataUserVC inputs (mirrors
+        # ssi/contracts/DataUserVerifier.sol)
+        entity_type: str | None = Query(default=None),
+        legal_compliance: bool | None = Query(default=None),
+        data_handling_policy: str | None = Query(default=None),
+        misuse_record: bool | None = Query(default=None),
     ):
         if type not in VC_KIND_TO_CONFIG_ID:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown VC type: {type} (supported: {list(VC_KIND_TO_CONFIG_ID)})",
             )
-        if type != "SellerVC" and not dataset_id:
+        if type not in ("SellerVC", "DataUserVC") and not dataset_id:
             raise HTTPException(
                 status_code=400, detail="dataset_id required for this VC type"
             )
         config_id = VC_KIND_TO_CONFIG_ID[type]
         offer_seller_id: str | None = None
+        offer_data_user_attrs: dict | None = None
 
         if type == "ConsentVC":
             allowed = DEFAULT_ALLOWED_PURPOSES.get(dataset_id or "", [purpose])
@@ -308,18 +404,68 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             page_title = "IW3IP Seller VC を発行"
             # SellerVC isn't dataset-scoped; carry a sentinel for storage.
             dataset_id = "*"
+        elif type == "DataUserVC":
+            for field_name, field_val in (
+                ("entity_type", entity_type),
+                ("legal_compliance", legal_compliance),
+                ("data_handling_policy", data_handling_policy),
+                ("misuse_record", misuse_record),
+            ):
+                if field_val is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{field_name} required for DataUserVC",
+                    )
+            offer_data_user_attrs = {
+                "entityType": entity_type,
+                "purpose": purpose,
+                "legalCompliance": bool(legal_compliance),
+                "dataHandlingPolicy": data_handling_policy,
+                "misuseRecord": bool(misuse_record),
+            }
+            allowed = []  # not used for DataUserVC
+            page_title = "IW3IP Data User VC を発行"
+            dataset_id = "*"
         else:  # PurchaseViewerVC
             allowed = ["read"]
             page_title = "IW3IP Purchase Viewer VC を発行"
 
-        offer = deps.state.create_offer(
-            credential_config_id=config_id,
-            dataset_id=dataset_id or "",
-            purpose=purpose,
-            allowed_purposes=allowed,
-            vc_kind=type,
-            seller_id=offer_seller_id,
-        )
+        offer: Offer | None = None
+        # Stage T (case alpha bug fix): for PurchaseViewerVC, prefer
+        # reusing the Offer that /marketplace/claim already minted and
+        # stashed under claim.pre_authorized_code. Without this the wallet
+        # would receive a fresh Offer whose pre_authorized_code does not
+        # round-trip back to any MarketplaceClaim, so the issuance branch
+        # in /issuer/credential cannot fold merchandise / buyer / tx_hash
+        # / allowed_views into the issued PurchaseViewerVC.
+        if type == "PurchaseViewerVC" and claim_id:
+            mc = deps.state.get_marketplace_claim(claim_id)
+            if not mc:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"unknown claim_id: {claim_id}",
+                )
+            existing = deps.state.get_offer_by_code(mc.pre_authorized_code)
+            if existing is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"claim {claim_id} has no associated Offer; "
+                        "the bridge / iot-market-ui must POST /marketplace/claim "
+                        "before the wallet fetches /issuer/offer"
+                    ),
+                )
+            offer = existing
+        if offer is None:
+            offer = deps.state.create_offer(
+                credential_config_id=config_id,
+                dataset_id=dataset_id or "",
+                purpose=purpose,
+                allowed_purposes=allowed,
+                vc_kind=type,
+                seller_id=offer_seller_id,
+                data_user_attrs=offer_data_user_attrs,
+            )
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
         co = _credential_offer(public_base, offer.pre_authorized_code, config_id)
         deeplink = (
@@ -390,9 +536,15 @@ def build_router(deps: IssuerDeps) -> APIRouter:
         fmt = body.get("format")
         offer_vct = VC_KIND_TO_VCT[offer.vc_kind]
         offer_cfg_id = VC_KIND_TO_CONFIG_ID[offer.vc_kind]
+        # Stage T (case alpha): for PurchaseViewerVC the offer carries one of
+        # several tier-aware config_ids (.full / .access / .event) — all valid
+        # for the same VCT, so the "exact match" check is widened.
+        valid_cfg_ids: tuple[str, ...] = (offer_cfg_id,)
+        if offer.vc_kind == "PurchaseViewerVC":
+            valid_cfg_ids = PURCHASE_VIEWER_VC_TIERED_CONFIG_IDS
         # Accept both the new (`dc+sd-jwt`) and legacy (`vc+sd-jwt`) SD-JWT VC media
         # type names so wallets that pin to either draft revision can still issue.
-        if not (cfg_id == offer_cfg_id or fmt in ("dc+sd-jwt", "vc+sd-jwt")):
+        if not (cfg_id in valid_cfg_ids or fmt in ("dc+sd-jwt", "vc+sd-jwt")):
             raise HTTPException(status_code=400, detail=f"only sd-jwt vc supported (got format={fmt}, cfg_id={cfg_id})")
         if body.get("vct") and body["vct"] != offer_vct:
             raise HTTPException(status_code=400, detail=f"unknown vct: {body['vct']}")
@@ -431,6 +583,10 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             plain_claims = {
                 "dataset_id": offer.dataset_id,
                 "allowed_actions": offer.allowed_purposes,
+                # Required by the verifier DCQL for PurchaseViewerVC; the
+                # holder DID doubles as the credential subject id so a
+                # wallet's PEX engine can match `path: ["subject_id"]`.
+                "subject_id": holder_did,
                 "iw3ip_issuer": deps.settings.issuer_id,
             }
             if claim:
@@ -439,6 +595,18 @@ def build_router(deps: IssuerDeps) -> APIRouter:
                     "buyer_eth_addr": claim.buyer_eth_addr,
                     "tx_hash": claim.tx_hash,
                     "purchased_at": int(claim.created_at),
+                    # Stage T (case alpha): bake tier into the VC so the
+                    # buyer can see what they paid for, and so verifier
+                    # presentation surfaces it back to the publisher.
+                    "allowed_views": claim.allowed_views,
+                    # Tier-aware display: surface access_level and
+                    # trust_score so the wallet detail screen shows
+                    # which tier this card represents (e.g. "full" /
+                    # "access") even when three cards share a VCT.
+                    "access_level": claim.access_level or "event",
+                    "trust_score": claim.trust_score
+                    if claim.trust_score is not None
+                    else 0,
                 })
                 deps.state.attach_holder_to_claim(claim.claim_id, holder_did)
                 # Audit the eth_addr <-> did:jwk binding now that we have both.
@@ -465,6 +633,16 @@ def build_router(deps: IssuerDeps) -> APIRouter:
             plain_claims = {
                 "seller_id": offer.seller_id or "unknown",
                 "licensed_datasets": offer.allowed_purposes,
+                "iw3ip_issuer": deps.settings.issuer_id,
+            }
+        elif offer.vc_kind == "DataUserVC":
+            attrs = offer.data_user_attrs or {}
+            plain_claims = {
+                "entityType": attrs.get("entityType", ""),
+                "purpose": attrs.get("purpose", ""),
+                "legalCompliance": bool(attrs.get("legalCompliance", False)),
+                "dataHandlingPolicy": attrs.get("dataHandlingPolicy", ""),
+                "misuseRecord": bool(attrs.get("misuseRecord", False)),
                 "iw3ip_issuer": deps.settings.issuer_id,
             }
         elif offer.vc_kind in ("ViewerVC", "ServiceVC"):

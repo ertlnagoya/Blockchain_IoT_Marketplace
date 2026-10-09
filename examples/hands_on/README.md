@@ -25,3 +25,5 @@ Each hands-on is organized in its own subdirectory and usually includes:
   - send a `flood_risk_high` event to `/simulate/publish`
 - `phase2_webcam_event_sharing`
   - send a `possible_littering` event to `/simulate/publish`
+- `local_vlm_distribution`
+  - analyze a webcam frame with a local model (`/semantic/analyze`) and distribute it
