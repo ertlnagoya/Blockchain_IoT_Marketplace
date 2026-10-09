@@ -32,7 +32,7 @@ use web3::{
 };
 
 use notify::{
-    event::{ModifyKind, RenameMode},
+    event::ModifyKind,
     EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
 use std::path::{Path, PathBuf};
@@ -260,6 +260,12 @@ async fn main() -> AppResult<()> {
     let config_clone = Arc::clone(&config);
     let watcher_thread = tokio::spawn(async move {
         let raw_data_dir = &config_clone.rawdata_dir;
+        // A fresh checkout has no `raw_data/output`; create it so that the
+        // startup scan and the watcher below have something to look at.
+        if let Err(e) = fs::create_dir_all(raw_data_dir) {
+            eprintln!("Failed to create raw data dir {}: {}", raw_data_dir, e);
+            return;
+        }
         let entries = match fs::read_dir(raw_data_dir) {
             Ok(entries) => entries,
             Err(e) => {
@@ -402,6 +408,95 @@ async fn main() -> AppResult<()> {
         println!("2. IoT Market deploy: {:.2?}", elapsed_times[1]);
         println!("3. IPFS upload: {:.2?}", elapsed_times[2]);
         println!("4. PostgreSQL upload: {:.2?}", elapsed_times[3]);
+
+        // Keep watching the raw data dir and productize event files that
+        // arrive after startup (e.g. the `.txt` snapshots written by
+        // sensor-bridge / webcam-bridge). Movie pairs
+        // (`<camera>_movie_<n>.json` + `.mp4`) need their JSON sidecar and
+        // are handled only by the startup scan above, so they are skipped.
+        let movie_re = regex::Regex::new(r"_movie_[0-9]+\.(json|mp4)$").unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PathBuf>();
+        let watch_dir = raw_data_dir.clone();
+        std::thread::spawn(move || watch_new_files(&watch_dir, tx));
+        println!("Watching {} for new event files", raw_data_dir);
+
+        let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        while let Some(file_path) = rx.recv().await {
+            let file_name = match file_path.file_name().and_then(|n| n.to_str()) {
+                Some(name) => name.to_string(),
+                None => continue,
+            };
+            if movie_re.is_match(&file_name) || !seen.insert(file_path.clone()) {
+                continue;
+            }
+            // Give the writer a moment to finish before reading the file.
+            time::sleep(Duration::from_millis(500)).await;
+            if !file_path.is_file() {
+                continue;
+            }
+            for matched_rules in rules.iter().filter(|rule| rule.is_matched(&file_path)) {
+                let processer = matched_rules.parse_processer().unwrap();
+                let metadata = matched_rules.parse_metadata().unwrap();
+                let processed_file = match process::caller::call_processer(
+                    file_path.to_str().unwrap(),
+                    &config_clone.processed_dir,
+                    processer,
+                )
+                .await
+                {
+                    Ok(output) => output,
+                    Err(e) => {
+                        eprintln!("Error processing file {:?}: {}", file_path, e);
+                        continue;
+                    }
+                };
+                let meta_info = match metadata.create_metadata(&processed_file) {
+                    Ok(info) => info,
+                    Err(e) => {
+                        eprintln!("Error creating metadata for {:?}: {}", processed_file, e);
+                        continue;
+                    }
+                };
+                let contract_info = matched_rules.get_contract();
+                let deploy_param = match DeployParam::new(
+                    contract_info.get_price(),
+                    processed_file.clone(),
+                    config_clone.pubkey_contract_address.clone(),
+                    contract_info.get_permissions(),
+                    meta_info,
+                )
+                .await
+                {
+                    Ok(param) => param,
+                    Err(e) => {
+                        eprintln!("Error preparing deploy for {:?}: {}", processed_file, e);
+                        continue;
+                    }
+                };
+                match deploy_eth_client.deploy_product(deploy_param).await {
+                    Ok(address) => {
+                        if let Err(e) = deploy_eth_client
+                            .register_product(&config_clone.iot_market_contract_address, address)
+                            .await
+                        {
+                            eprintln!("Error registering product {:?}: {}", address, e);
+                            continue;
+                        }
+                        db.insert(address, processed_file.clone()).await;
+                        println!(
+                            "Product deployed: {:?} for file {}",
+                            address, file_name
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Error deploying product for file {:?}: {}",
+                            processed_file, e
+                        );
+                    }
+                }
+            }
+        }
     });
 
     // watch blockchain
@@ -582,26 +677,46 @@ async fn main() -> AppResult<()> {
     Ok(())
 }
 
-async fn monitor_folder(path: &str) -> Option<PathBuf> {
-    let (tx, rx) = mpsc::channel();
-
-    // Create watcher and start monitoring
-    let mut watcher = RecommendedWatcher::new(tx, notify::Config::default()).ok()?;
-    watcher
-        .watch(Path::new(path), RecursiveMode::NonRecursive)
-        .ok()?;
-    println!("monitor_folder created watcher. Path:{path}");
-
-    rx.iter().flatten().find_map(|event| {
-        println!("watcher's event.kind: {:?}", event.kind);
-        if let EventKind::Create(notify::event::CreateKind::File) = event.kind {
-            event.paths.first().cloned()
-        } else if let EventKind::Modify(notify::event::ModifyKind::Name(RenameMode::To)) =
-            event.kind
-        {
-            event.paths.first().cloned()
-        } else {
-            None
+/// Watch `path` and send every newly created (or moved-in) file to `tx`.
+/// Runs on its own thread because `notify` delivers events over a blocking
+/// std channel. Returns when the receiving side is dropped.
+fn watch_new_files(path: &str, tx: tokio::sync::mpsc::UnboundedSender<PathBuf>) {
+    let (event_tx, event_rx) = mpsc::channel();
+    let mut watcher = match RecommendedWatcher::new(event_tx, notify::Config::default()) {
+        Ok(watcher) => watcher,
+        Err(e) => {
+            eprintln!("Failed to create file watcher: {}", e);
+            return;
         }
-    })
+    };
+    if let Err(e) = watcher.watch(Path::new(path), RecursiveMode::NonRecursive) {
+        eprintln!("Failed to watch {}: {}", path, e);
+        return;
+    }
+    for event in event_rx.iter().flatten() {
+        // Writers such as the bridges create a hidden temp file and rename
+        // it into place. Depending on the platform the rename is reported
+        // as `Name(To)`, `Name(Both)` or `Name(Any)`, so accept every name
+        // change and keep only the paths that exist afterwards.
+        let is_new_file = matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
+        );
+        if !is_new_file {
+            continue;
+        }
+        for file_path in event.paths {
+            let hidden = file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(true);
+            if hidden || !file_path.is_file() {
+                continue;
+            }
+            if tx.send(file_path).is_err() {
+                return;
+            }
+        }
+    }
 }
