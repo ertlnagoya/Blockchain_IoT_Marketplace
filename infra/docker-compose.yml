@@ -29,6 +29,8 @@ services:
       AUDIT_DB_PATH: /data/audit.db
       CONSENT_STORE_PATH: /data/consents.json
       # Stage T (case B): media gateway store + (optional) public base URL
+      # Demo-only: unauthenticated GET /platform/ingest (see config.py).
+      PLATFORM_INGEST_READ_ENABLED: ${PLATFORM_INGEST_READ_ENABLED:-false}
       MEDIA_STORE_PATH: /data/media
       MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-}
       # Stage T (case C): IPFS daemon endpoints. Activate with the
@@ -87,6 +89,91 @@ services:
       PORT: "7000"
     ports:
       - "7100:7000"
+
+  # --- Home Assistant demo simulator / Phase 3 assistant (opt-in profiles) ---
+  homeassistant-demo:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: iw3ip-homeassistant-demo
+    profiles: ["ha-demo", "ha-demo-phase3"]
+    depends_on:
+      - mosquitto
+    environment:
+      TZ: Asia/Tokyo
+    ports:
+      - "8123:8123"
+    volumes:
+      - ../home-assistant-demo/config:/config
+    restart: unless-stopped
+
+  assistant:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-assistant
+    profiles: ["assistant", "ha-demo-phase3"]
+    environment:
+      ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+      ASSISTANT_PLANNER_MODE: rule_based
+      ASSISTANT_PLANNER_NAME: rule-based-planner-v1
+      ASSISTANT_LLM_PROVIDER: stub
+      ASSISTANT_LLM_API_BASE_URL: ""
+      ASSISTANT_LLM_API_KEY: ""
+      ASSISTANT_LLM_MODEL: ""
+      ASSISTANT_LLM_TIMEOUT_SECONDS: 20
+    ports:
+      - "8090:8090"
+
+  assistant-llm:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-assistant-llm
+    profiles: ["assistant-llm"]
+    env_file:
+      - ../.env.local
+    environment:
+      ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+    ports:
+      - "8090:8090"
+
+  assistant-demo:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-assistant-demo
+    profiles: ["assistant-demo"]
+    depends_on:
+      - llm-mock
+    environment:
+      ASSISTANT_SAMPLE_EVENTS_PATH: examples/phase3_events_park_safety.json
+      ASSISTANT_PLANNER_MODE: llm
+      ASSISTANT_PLANNER_NAME: llm-planner-mock-http-v1
+      ASSISTANT_LLM_PROVIDER: openai_compatible
+      ASSISTANT_LLM_API_BASE_URL: http://llm-mock:18000/v1
+      ASSISTANT_LLM_API_KEY: mock-key
+      ASSISTANT_LLM_MODEL: mock-model
+      ASSISTANT_LLM_TIMEOUT_SECONDS: 20
+    ports:
+      - "8090:8090"
+
+  llm-mock:
+    build:
+      context: ..
+      dockerfile: assistant/Dockerfile
+    container_name: iw3ip-llm-mock
+    profiles: ["llm-mock", "assistant-demo"]
+    command: ["uvicorn", "examples.phase3_llm_mock_server:app", "--host", "0.0.0.0", "--port", "18000"]
+    ports:
+      - "18000:18000"
+
+  assistant-ui:
+    build:
+      context: ..
+      dockerfile: assistant-ui/Dockerfile
+    container_name: iw3ip-assistant-ui
+    profiles: ["assistant-ui", "assistant-demo"]
+    ports:
+      - "4173:4173"
 
   nodered:
     image: nodered/node-red:latest

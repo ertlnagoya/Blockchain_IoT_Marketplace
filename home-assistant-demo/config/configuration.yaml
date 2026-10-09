@@ -1,0 +1,17 @@
+default_config:
+
+demo:
+
+homeassistant:
+  name: IW3IP HA Demo
+  latitude: 35.1815
+  longitude: 136.9066
+  elevation: 12
+  unit_system: metric
+  time_zone: Asia/Tokyo
+
+script: !include scripts.yaml
+automation: !include automations.yaml
+
+logger:
+  default: info
