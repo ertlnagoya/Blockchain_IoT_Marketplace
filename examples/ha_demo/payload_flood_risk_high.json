@@ -1,0 +1,11 @@
+{
+  "event_type": "flood_risk_high",
+  "data": {
+    "sensor_id": "ha-demo-river-01",
+    "location": "river-west",
+    "water_level_m": 1.71,
+    "severity": "high"
+  },
+  "ts": "2026-03-10T10:10:00Z",
+  "source": "home_assistant_demo"
+}

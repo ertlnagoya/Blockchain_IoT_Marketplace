@@ -45,6 +45,12 @@ examples/hands_on/data_user_vc_tiered/fixtures/
 # Local-dev only — host IP / RPC URL are operator-specific.
 infra/.env
 
-# Home Assistant demo container's persistent volume; lives in the
-# repo only because docker-compose mounts it from the working tree.
-home-assistant-demo/
+# Home Assistant demo runtime state (the container writes into the
+# mounted config dir); only the three hand-written files are tracked.
+home-assistant-demo/config/*
+!home-assistant-demo/config/configuration.yaml
+!home-assistant-demo/config/automations.yaml
+!home-assistant-demo/config/scripts.yaml
+
+# Local LLM configuration (Phase 3 assistant-llm profile)
+.env.local

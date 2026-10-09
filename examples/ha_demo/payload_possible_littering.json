@@ -1,0 +1,11 @@
+{
+  "event_type": "possible_littering",
+  "data": {
+    "camera_id": "ha-demo-camera-01",
+    "location": "park-north",
+    "object_class": "bottle",
+    "confidence": 0.88
+  },
+  "ts": "2026-03-10T10:20:00Z",
+  "source": "home_assistant_demo"
+}

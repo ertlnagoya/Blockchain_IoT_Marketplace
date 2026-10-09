@@ -300,6 +300,16 @@ def platform_ingest(
     return {"status": "received", "count": len(app.state.ingested)}
 
 
+@app.get("/platform/ingest")
+def platform_ingest_list() -> list[dict]:
+    # Unauthenticated dump of everything ingested. Demo-only: disabled
+    # unless PLATFORM_INGEST_READ_ENABLED=true, because it bypasses the
+    # ViewerToken gate on /platform/data.
+    if not settings.platform_ingest_read_enabled:
+        raise HTTPException(status_code=404, detail="platform_ingest_read_disabled")
+    return app.state.ingested
+
+
 @app.get("/platform/data")
 def platform_data(
     dataset_id: str | None = None,

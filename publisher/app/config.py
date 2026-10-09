@@ -15,6 +15,13 @@ class Settings(BaseSettings):
 
     platform_api_url: str = "http://localhost:8080/platform/ingest"
 
+    # Demo-only: expose GET /platform/ingest, which returns every ingested
+    # row without authentication. The read path is otherwise the
+    # ViewerToken-gated /platform/data (Stage 3), so this stays off unless
+    # explicitly enabled for the no-wallet demos (ha-demo, Phase 2 Stage 0
+    # hands-on, examples/ha_demo/run_phase3_from_ingest.py).
+    platform_ingest_read_enabled: bool = False
+
     audit_db_path: str = "audit/audit.db"
     consent_store_path: str | None = None
 

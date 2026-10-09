@@ -1,0 +1,10 @@
+{
+  "event_type": "person_detected",
+  "data": {
+    "camera_id": "ha-demo-camera-01",
+    "confidence": 0.94,
+    "location": "entrance"
+  },
+  "ts": "2026-03-10T10:05:00Z",
+  "source": "home_assistant_demo"
+}
