@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         'cryptography>=42' \
         python-multipart \
         'qrcode[pil]>=7' \
-        'opencv-python-headless>=4.8' \
+        'opencv-python-headless>=4.8,<5' \
         'numpy>=1.26'
 
 EXPOSE 8080
