@@ -33,6 +33,11 @@ services:
       PLATFORM_INGEST_READ_ENABLED: ${PLATFORM_INGEST_READ_ENABLED:-false}
       MEDIA_STORE_PATH: /data/media
       MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-}
+      # Stage 7: verify Merchandise.getOwner() on /marketplace/register
+      # (e.g. http://host.docker.internal:8545). Empty = skip the check.
+      MARKETPLACE_HARDHAT_RPC: ${MARKETPLACE_HARDHAT_RPC:-}
+      # Browser origins allowed by CORS (iot-market-ui on :5173).
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-*}
       # Stage T (case C): IPFS daemon endpoints. Activate with the
       # `ipfs` compose profile -- when the kubo container is up the
       # publisher mirrors every /media/upload into IPFS and proxies
@@ -78,6 +83,9 @@ services:
       - "8080:8080"
     volumes:
       - publisher_data:/data
+    # Lets MARKETPLACE_HARDHAT_RPC reach Hardhat on the host (Linux).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   verifier-sidecar:
     build:

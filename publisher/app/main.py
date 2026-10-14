@@ -69,6 +69,20 @@ mqtt_subscriber = MQTTSubscriber(
 app = FastAPI(title="IW3IP Data Publisher", version="0.1.0")
 app.state.ingested = []
 
+# The marketplace UI (iot-market-ui, :5173) calls /marketplace/claim,
+# /marketplace/register and /platform/data from the browser, so the
+# publisher must answer CORS preflights. Comma-separated origins; "*"
+# (default) suits the local hands-on.
+if settings.cors_allow_origin_list:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origin_list,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 import logging
 from starlette.requests import Request as _StarletteRequest
 from fastapi.exceptions import RequestValidationError

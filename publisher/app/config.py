@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # the registration as "owner_verify=skipped").
     marketplace_hardhat_rpc: str | None = None
 
+    # Browser origins allowed to call the publisher (comma-separated).
+    # "*" for the local hands-on; set "" to disable CORS headers.
+    cors_allow_origins: str = "*"
+
+    @property
+    def cors_allow_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
     # Stage T (VLM extension): semantic-level tier projection.
     # Empty string ("") = legacy 3-tier behaviour (drop image/video keys
     # per access_level). When set, the pipeline produces VLM-derived
