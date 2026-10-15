@@ -24,7 +24,8 @@ const config: HardhatUserConfig = {
     enabled: true,
     noColors: true,
     outputFile: `logs/${getCurrentTime()}`,
-    coinmarketcap: "ec9d8d7e-6a0b-44e4-9194-83015afe73fd",
+    // Optional: set COINMARKETCAP_API_KEY in .env to show fiat prices.
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
     gasPrice: 3.218,
   },
 };
