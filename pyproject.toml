@@ -25,6 +25,11 @@ dev = [
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.hatch.build.targets.wheel]
+# The repository is not a single package named after the project;
+# ship the Python packages the services and tests import.
+packages = ["assistant", "audit", "policy", "publisher", "schemas"]
+
 [build-system]
 requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
