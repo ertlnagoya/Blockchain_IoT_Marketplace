@@ -54,3 +54,6 @@ home-assistant-demo/config/*
 
 # Local LLM configuration (Phase 3 assistant-llm profile)
 .env.local
+
+# Python virtual environment used by the hands-on pages
+.venv/
