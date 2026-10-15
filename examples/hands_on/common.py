@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 from pathlib import Path
 from urllib import request
@@ -14,7 +15,16 @@ def load_json(path: Path) -> dict:
         return json.load(fh)
 
 
-def post_json(base_url: str, path: str, body: dict) -> dict:
+# /simulate/publish runs the VLM before it answers when VLM_BACKEND is set.
+# On a CPU-only PC that takes minutes (the publisher allows VLM_TIMEOUT_SEC
+# = 180 s per call, two calls per frame), so the client must wait longer.
+# Override with HANDS_ON_HTTP_TIMEOUT (seconds).
+DEFAULT_POST_TIMEOUT = float(os.environ.get("HANDS_ON_HTTP_TIMEOUT", "600"))
+
+
+def post_json(
+    base_url: str, path: str, body: dict, *, timeout: float | None = None
+) -> dict:
     payload = json.dumps(body).encode("utf-8")
     req = request.Request(
         base_url.rstrip("/") + path,
@@ -22,7 +32,9 @@ def post_json(base_url: str, path: str, body: dict) -> dict:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with request.urlopen(req, timeout=10) as resp:  # noqa: S310 - local training endpoint
+    with request.urlopen(  # noqa: S310 - local training endpoint
+        req, timeout=DEFAULT_POST_TIMEOUT if timeout is None else timeout
+    ) as resp:
         return json.load(resp)
 
 
