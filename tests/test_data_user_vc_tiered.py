@@ -465,6 +465,11 @@ def test_issuer_offer_with_claim_id_reuses_claim_pre_auth_code(client):
         "the offer URL must reuse the claim's pre_authorized_code; "
         f"got {offer['pre_authorized_code']!r} != claim {deeplink_code!r}"
     )
+    # The offer page must advertise the same tier-specific config id as the
+    # deeplink, otherwise the wallet shows the generic PurchaseViewerVC card.
+    assert offer["credential_offer"]["credential_configuration_ids"] == [
+        "PurchaseViewerVC.full"
+    ]
 
 
 def test_issuer_offer_unknown_claim_id_404(client):

@@ -467,7 +467,12 @@ def build_router(deps: IssuerDeps) -> APIRouter:
                 data_user_attrs=offer_data_user_attrs,
             )
         public_base = externally_reachable_base_url(request, deps.settings.issuer_base_url)
-        co = _credential_offer(public_base, offer.pre_authorized_code, config_id)
+        # A reused claim Offer carries the tier-specific config id
+        # (PurchaseViewerVC.full / .access / .event); advertise that one so the
+        # wallet shows the same card as the /marketplace/claim deeplink.
+        co = _credential_offer(
+            public_base, offer.pre_authorized_code, offer.credential_config_id
+        )
         deeplink = (
             DEEPLINK_SCHEME
             + "?credential_offer="
