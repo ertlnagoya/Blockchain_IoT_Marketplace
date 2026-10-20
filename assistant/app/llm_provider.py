@@ -129,23 +129,38 @@ class OpenAICompatibleLLMProvider:
             "Content-Type": "application/json",
         }
 
-        if self.http_client is not None:
-            response = self.http_client.post(
-                f"{self.api_base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=self.timeout_seconds,
-            )
-        else:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
-                response = client.post(
+        # HTTP errors (wrong key / URL / model) and unreachable servers are
+        # reported as LLMProviderError so the planner falls back to the
+        # rule-based plan instead of returning a bare 500.
+        try:
+            if self.http_client is not None:
+                response = self.http_client.post(
                     f"{self.api_base_url}/chat/completions",
                     headers=headers,
                     json=payload,
+                    timeout=self.timeout_seconds,
                 )
+            else:
+                with httpx.Client(timeout=self.timeout_seconds) as client:
+                    response = client.post(
+                        f"{self.api_base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise LLMProviderError(
+                f"LLM API returned HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise LLMProviderError(
+                f"could not reach LLM API ({type(exc).__name__})"
+            ) from exc
 
-        response.raise_for_status()
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise LLMProviderError("LLM API response is not JSON") from exc
 
         try:
             content = body["choices"][0]["message"]["content"]
