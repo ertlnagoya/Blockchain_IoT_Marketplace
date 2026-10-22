@@ -105,7 +105,8 @@ def build(out_dir: Path, gateway_cn: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=HERE / "certs")
-    parser.add_argument("--gateway-cn", default="iw3ip-gateway-cam01")
+    # the CN stays in every Tier 2 derivative and cannot be redacted, so keep the camera ID out of it
+    parser.add_argument("--gateway-cn", default="iw3ip-gateway")
     args = parser.parse_args()
     build(args.out, args.gateway_cn)
 

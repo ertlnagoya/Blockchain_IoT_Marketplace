@@ -47,6 +47,9 @@ c2pa-python 0.38.1 / c2pa-rs 0.91.3
 [PASS] capture/sensor assertions are redacted  (leaked=[])
 [PASS] no unblurred thumbnail via the ingredient
 [PASS] capture manifest thumbnail is redacted
+[PASS] capture title has no camera ID  (capture.jpg)
+[PASS] signer certificate name has no camera ID  (iw3ip-gateway)
+[PASS] camera ID appears nowhere in the Tier 2 bytes  (0 hit(s))
 [PASS] one flipped byte makes the derivative Invalid  (Invalid)
 
 all checks passed
@@ -62,6 +65,7 @@ The exit code is 0 only when every check passes. `out/capture.jpg` and
 | Valid + untrusted / Trusted | §6.1 certificates, §7.1 validation states |
 | Custom assertions | §5.1 labels, §5.2 capture manifest |
 | Tier 2 derivative, redaction, thumbnails | §5.3 derivative manifests (the privacy pitfall) |
+| Capture title, signer certificate name, camera ID in the bytes | §5.2 capture manifest title, §5.3 what redaction cannot remove, §6.1 certificate name |
 | One flipped byte | §9.1 tamper detection |
 
 ## Pitfalls found while writing this
@@ -75,6 +79,14 @@ The exit code is 0 only when every check passes. `out/capture.jpg` and
   readings, and an **unblurred thumbnail** of the original. The script reads
   the derivative back to confirm the redaction instead of trusting the definition.
 - The SDK does not add the `c2pa.redacted` action by itself.
+- Redaction cannot remove the capture manifest's title or the signer
+  certificate: the derivative imports the capture claim and signature as they
+  are, and the title stays even when the ingredient title is omitted. Keep the
+  camera ID and capture time out of both (the camera ID goes in
+  `jp.ertl.iw3ip.capture`, which can be redacted). Certificates made before
+  this change have CN `iw3ip-gateway-cam01`; rerun `make_test_certs.py`.
+- The certificate serial number still stays in every derivative, so Tier 2
+  recipients can tell which files came from the same gateway (spec §11).
 
 ## Not covered yet
 

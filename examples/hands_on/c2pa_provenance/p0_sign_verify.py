@@ -11,7 +11,8 @@ end to end on one machine:
    ``parentOf`` ingredient and redacts the capture's thumbnail, camera and
    sensor assertions.
 4. Confirm the redacted assertions are really gone and the derivative is
-   still ``Trusted``.
+   still ``Trusted``, and that the camera ID does not reach Tier 2 through
+   the capture title or the signer certificate, which cannot be redacted.
 5. Flip one byte of the derivative and confirm it becomes ``Invalid``.
 
 Usage:
@@ -131,7 +132,8 @@ def main() -> int:
     captured_at = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     capture_def = {
         "claim_generator_info": [{"name": "iw3ip-gateway", "version": "0.1.0"}],
-        "title": f"{args.camera_id}.jpg",
+        # the capture title cannot be redacted from derivatives (spec §5.2), so it carries no camera ID or time
+        "title": "capture.jpg",
         "assertions": [
             {"label": "c2pa.actions", "data": {"actions": [
                 {"action": "c2pa.created", "digitalSourceType": DIGITAL_CAPTURE}]}},
@@ -164,7 +166,7 @@ def main() -> int:
     redactions = [f"self#jumbf=/c2pa/{cap_label}/c2pa.assertions/{lab}" for lab in REDACT_LABELS]
     derived_def = {
         "claim_generator_info": [{"name": "iw3ip-publisher", "version": "0.1.0"}],
-        "title": f"{args.camera_id}-tier2.jpg",
+        "title": "tier2.jpg",
         "assertions": [
             {"label": "c2pa.actions", "data": {"actions": [
                 # the SDK refuses a first action other than created / opened
@@ -183,7 +185,7 @@ def main() -> int:
     # the derivative's own thumbnail shows the blurred image, so it can stay
     with c2pa.Builder(derived_def) as builder:
         builder.add_ingredient(
-            {"title": f"{args.camera_id}.jpg", "relationship": "parentOf", "label": "capture"},
+            {"title": "capture.jpg", "relationship": "parentOf", "label": "capture"},
             "image/jpeg", io.BytesIO(capture),
         )
         builder.sign(signer, "image/jpeg", jpeg_bytes(blurred), out)
@@ -201,6 +203,14 @@ def main() -> int:
                   "no unblurred thumbnail via the ingredient")
     checks.expect("thumbnail" not in store["manifests"][cap_label],
                   "capture manifest thumbnail is redacted")
+    # the capture title and signer certificate come in with the capture claim and cannot be redacted (spec §5.3)
+    cap_m = store["manifests"][cap_label]
+    cap_title, signer_cn = cap_m.get("title") or "", cap_m["signature_info"].get("common_name") or ""
+    checks.expect(args.camera_id not in cap_title, "capture title has no camera ID", cap_title)
+    checks.expect(args.camera_id not in signer_cn, "signer certificate name has no camera ID",
+                  signer_cn + ("" if args.camera_id not in signer_cn else "; rerun make_test_certs.py"))
+    hits = derived.count(args.camera_id.encode())
+    checks.expect(hits == 0, "camera ID appears nowhere in the Tier 2 bytes", f"{hits} hit(s)")
 
     # 5. tamper detection (spec §9.1)
     tampered = bytearray(derived)
