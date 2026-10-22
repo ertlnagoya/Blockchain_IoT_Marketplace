@@ -66,10 +66,19 @@ def capture_image(args: argparse.Namespace) -> Image.Image:
         import cv2  # optional; only needed for --webcam
 
         cam = cv2.VideoCapture(args.camera_index)
-        ok, frame = cam.read()
+        # the first frames are often black while auto exposure settles,
+        # so keep reading (about 3 s) until one is bright enough
+        frame = None
+        for _ in range(90):
+            ok, candidate = cam.read()
+            if not ok:  # no camera or no permission: give up at once
+                break
+            if candidate.mean() > 10:
+                frame = candidate
+                break
         cam.release()
-        if not ok:
-            sys.exit("webcam capture failed")
+        if frame is None:
+            sys.exit("webcam capture failed (no camera access, or every frame was black)")
         return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     img = Image.new("RGB", (640, 480), (90, 120, 160))
     draw = ImageDraw.Draw(img)
