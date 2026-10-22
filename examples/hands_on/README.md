@@ -27,3 +27,5 @@ Each hands-on is organized in its own subdirectory and usually includes:
   - send a `possible_littering` event to `/simulate/publish`
 - `local_vlm_distribution`
   - analyze a webcam frame with a local model (`/semantic/analyze`) and distribute it
+- `c2pa_provenance`
+  - sign a capture with a C2PA manifest and check a redacted Tier 2 derivative (Stage P, P0)
