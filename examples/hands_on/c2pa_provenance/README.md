@@ -33,7 +33,8 @@ uv run --no-project --with c2pa-python --with pillow --with cryptography \
 
 By default the script signs a generated dummy image. Use `--image PATH` to
 sign your own JPEG/PNG, or `--webcam` to capture one frame (needs
-`--with opencv-python`).
+`--with opencv-python`; on macOS, allow camera access for your terminal app
+first, or the script stops with `webcam capture failed`).
 
 ## Expected output
 
@@ -66,14 +67,13 @@ The exit code is 0 only when every check passes. `out/capture.jpg` and
 ## Pitfalls found while writing this
 
 - The SDK rejects certificates signed with SHA-1, self-signed signing
-  certificates, and signing certificates without an EKU. `make_test_certs.py`
-  avoids all three (macOS `openssl` signs with SHA-1 unless `-sha256` is given).
-- The ES256 signing callback must return raw `r||s` (64 bytes), not DER.
+  certificates, and signing certificates without an EKU. A chain without key
+  identifiers (SKI/AKI) and a CA key usage was also rejected. `make_test_certs.py`
+  covers all of these (macOS `openssl` signs with SHA-1 unless `-sha256` is given).
 - A derivative manifest must start with `c2pa.opened`; `c2pa.edited` first is refused.
 - Without redaction, the derivative carries the original camera ID, sensor
-  readings, and an **unblurred thumbnail** of the original.
-- Redaction URIs must start with `/c2pa/`. Other forms are silently ignored,
-  which is why the script reads the derivative back and checks.
+  readings, and an **unblurred thumbnail** of the original. The script reads
+  the derivative back to confirm the redaction instead of trusting the definition.
 - The SDK does not add the `c2pa.redacted` action by itself.
 
 ## Not covered yet

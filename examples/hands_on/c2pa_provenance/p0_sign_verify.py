@@ -49,7 +49,7 @@ def make_signer(certs: Path) -> c2pa.Signer:
     key = serialization.load_pem_private_key((certs / "gw.key").read_bytes(), None)
 
     def sign(data: bytes) -> bytes:
-        # COSE ES256 wants raw r||s (64 bytes), not DER
+        # COSE ES256 signatures are raw r||s (64 bytes); the SDK also accepted DER in our tests
         r, s = decode_dss_signature(key.sign(data, ec.ECDSA(hashes.SHA256())))
         return r.to_bytes(32, "big") + s.to_bytes(32, "big")
 
@@ -176,12 +176,12 @@ def main() -> int:
             ]}},
             {"label": "jp.ertl.iw3ip.derivation", "data": {"tier": 2, "kind": "face_blur"}},
         ],
-        # URIs must start with /c2pa/; anything else is silently ignored
+        # removes these assertions from the ingredient's manifest; checked below
         "redactions": redactions,
     }
-    no_thumb = c2pa.Context(c2pa.Settings.from_dict({"builder": {"thumbnail": {"enabled": False}}}))
     out = io.BytesIO()
-    with c2pa.Builder(derived_def, context=no_thumb) as builder:
+    # the derivative's own thumbnail shows the blurred image, so it can stay
+    with c2pa.Builder(derived_def) as builder:
         builder.add_ingredient(
             {"title": f"{args.camera_id}.jpg", "relationship": "parentOf", "label": "capture"},
             "image/jpeg", io.BytesIO(capture),
