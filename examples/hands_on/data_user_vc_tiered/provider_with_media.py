@@ -34,18 +34,27 @@ if str(REPO_ROOT) not in sys.path:
 from examples.hands_on.common import post_json, upload_media
 
 
-# Smallest legal JPEG (1×1 white pixel, 125 bytes).
+# A small but complete JPEG (16x16 grey, baseline, 285 bytes). It has image
+# data (an SOS segment), so browsers, OpenCV (face blur) and the VLM can
+# decode it. The previous constant lacked SOS and could not be decoded.
 _TINY_JPEG = bytes.fromhex(
-    "ffd8ffe000104a46494600010100000100010000ffdb004300080606070605"
-    "08070707090908090a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
-    "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0affc0000b08"
-    "00010001010100ffc4001500010100000000000000000000000000000007ff"
-    "c4001f10000103030301010100000000000000010002030405060708ffd900"
+    "ffd8ffe000104a46494600010100000100010000ffdb004300100b0c0e0c0a"
+    "100e0d0e1211101318281a181616183123251d283a333d3c3933383740485c"
+    "4e404457453738506d51575f626768673e4d71797064785c656763ffdb0043"
+    "011112121815182f1a1a2f6342384263636363636363636363636363636363"
+    "63636363636363636363636363636363636363636363636363636363636363"
+    "636363ffc00011080010001003012200021101031101ffc400150001010000"
+    "0000000000000000000000000006ffc4001410010000000000000000000000"
+    "0000000000ffc40014010100000000000000000000000000000000ffc40014"
+    "110100000000000000000000000000000000ffda000c03010002110311003f"
+    "00a4001fffd9"
 )
 
 
 def _ensure_fixture(path: Path, blob: bytes) -> Path:
-    if not path.exists():
+    # Rewrite the fixture when it is missing or differs from blob so an
+    # older, undecodable fixture left in the git-ignored folder is replaced.
+    if not path.exists() or path.read_bytes() != blob:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
     return path
@@ -58,12 +67,12 @@ def main() -> None:
     parser.add_argument(
         "--image",
         type=Path,
-        help="JPEG/PNG to upload as the `image_url`. Defaults to a 1×1 fixture.",
+        help="JPEG/PNG to upload as the `image_url`. Defaults to a 16x16 grey fixture.",
     )
     parser.add_argument(
         "--video",
         type=Path,
-        help="MP4 to upload as the `video_url`. Defaults to the 1×1 JPEG bytes "
+        help="MP4 to upload as the `video_url`. Defaults to the fixture JPEG bytes "
         "tagged as video/mp4 — fine for tier-projection demos, replace with a "
         "real clip for a production-flavoured run.",
     )
