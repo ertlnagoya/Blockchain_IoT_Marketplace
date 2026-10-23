@@ -2,7 +2,8 @@
 
 Check program for the design spec
 [C2PA provenance pipeline (Stage P)](https://www.ertl.jp/iw3ip.github.io/design/c2pa-provenance-spec/).
-There is no hands-on page yet; this directory is the starting point for P0.
+The hands-on page is [Prove where an image came from (C2PA / Stage P)](https://www.ertl.jp/iw3ip.github.io/hands-on/c2pa-provenance/)
+(Japanese, with an English version on the same site).
 
 The goal: sign a camera capture with a C2PA manifest, derive a Tier 2
 face-blurred image that keeps a verifiable link to the original without
@@ -52,6 +53,7 @@ c2pa-python 0.38.1 / c2pa-rs 0.91.3
 [PASS] camera ID appears nowhere in the Tier 2 bytes  (0 hit(s))
 [PASS] one flipped byte makes the derivative Invalid  (Invalid)
 
+outputs: .../examples/hands_on/c2pa_provenance/out/capture.jpg, .../examples/hands_on/c2pa_provenance/out/tier2.jpg
 all checks passed
 ```
 

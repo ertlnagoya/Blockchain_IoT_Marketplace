@@ -5,7 +5,7 @@ that are self-signed, signed with SHA-1, or lack an extended key usage,
 so this script builds a CA -> leaf chain that satisfies those rules.
 
 Usage:
-    uv run --with c2pa-python --with pillow \
+    uv run --no-project --with c2pa-python --with pillow --with cryptography \
         python examples/hands_on/c2pa_provenance/make_test_certs.py
 
 Writes ``certs/`` next to this file:

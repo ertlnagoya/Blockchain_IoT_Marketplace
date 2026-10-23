@@ -16,9 +16,9 @@ end to end on one machine:
 5. Flip one byte of the derivative and confirm it becomes ``Invalid``.
 
 Usage:
-    uv run --with c2pa-python --with pillow \
+    uv run --no-project --with c2pa-python --with pillow --with cryptography \
         python examples/hands_on/c2pa_provenance/make_test_certs.py
-    uv run --with c2pa-python --with pillow \
+    uv run --no-project --with c2pa-python --with pillow --with cryptography \
         python examples/hands_on/c2pa_provenance/p0_sign_verify.py [--image PATH | --webcam]
 
 Exit code is 0 only when every check passes.
