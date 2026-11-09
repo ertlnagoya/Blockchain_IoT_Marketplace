@@ -80,11 +80,35 @@ def capture_image(args: argparse.Namespace) -> Image.Image:
         if frame is None:
             sys.exit("webcam capture failed (no camera access, or every frame was black)")
         return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    img = Image.new("RGB", (640, 480), (90, 120, 160))
-    draw = ImageDraw.Draw(img)
-    draw.ellipse((280, 120, 360, 200), fill=(230, 190, 160))  # stand-in "face"
-    draw.text((10, 10), "cam01 (dummy)", fill=(255, 255, 255))
-    return img
+    return dummy_scene()
+
+
+def dummy_scene():
+    """A park scene with a drawn person and a bottle on the grass.
+
+    The face is drawn so that the publisher's face detector (OpenCV Haar
+    cascade) finds it, which makes the Tier 2 blur visible in the P1/P2
+    flow. It carries no camera ID in its pixels.
+    """
+    img = Image.new("RGB", (640, 480), (170, 205, 235))  # sky
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, 330, 640, 480), fill=(110, 160, 90))  # grass
+    d.rectangle((40, 250, 140, 330), fill=(120, 90, 60))  # bench
+    d.rectangle((210, 300, 370, 480), fill=(70, 90, 140))  # body
+    cx, cy, r = 290, 190, 100
+    d.ellipse((cx - r * 0.8, cy - r, cx + r * 0.8, cy + r * 1.05), fill=(224, 182, 150))
+    d.rectangle((cx - r * 0.85, cy - r * 1.15, cx + r * 0.85, cy - r * 0.55), fill=(60, 45, 35))
+    for sx in (-1, 1):
+        ex, ey = cx + sx * r * 0.33, cy - r * 0.12
+        d.ellipse((ex - r * 0.2, ey - r * 0.17, ex + r * 0.2, ey + r * 0.05), fill=(150, 110, 90))
+        d.ellipse((ex - r * 0.12, ey - r * 0.1, ex + r * 0.12, ey + r * 0.02), fill=(40, 30, 30))
+        d.rectangle((ex - r * 0.22, ey - r * 0.32, ex + r * 0.22, ey - r * 0.25), fill=(60, 45, 35))
+    d.polygon([(cx, cy - r * 0.05), (cx - r * 0.12, cy + r * 0.3), (cx + r * 0.12, cy + r * 0.3)],
+              fill=(190, 140, 115))
+    d.ellipse((cx - r * 0.3, cy + r * 0.48, cx + r * 0.3, cy + r * 0.62), fill=(150, 70, 70))
+    d.rounded_rectangle((470, 400, 540, 425), radius=8, fill=(90, 160, 110))  # bottle
+    d.rectangle((540, 405, 555, 420), fill=(230, 230, 230))  # cap
+    return img.filter(ImageFilter.GaussianBlur(1))
 
 
 def jpeg_bytes(img: Image.Image) -> io.BytesIO:

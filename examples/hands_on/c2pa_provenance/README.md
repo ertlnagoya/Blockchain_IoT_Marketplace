@@ -39,7 +39,7 @@ uv run --no-project --with c2pa-python --with pillow --with cryptography \
   python examples/hands_on/c2pa_provenance/p0_sign_verify.py
 ```
 
-By default the script signs a generated dummy image. Use `--image PATH` to
+By default the script signs a drawn park scene (a person and a bottle). Use `--image PATH` to
 sign your own JPEG/PNG, or `--webcam` to capture one frame (needs
 `--with opencv-python`; on macOS, allow camera access for your terminal app
 first, or the script stops with `webcam capture failed`).
@@ -157,9 +157,9 @@ outputs: .../out/p1_capture.jpg, .../out/p2_tier2.jpg
 all checks passed
 ```
 
-By default the script signs a drawn park scene with a person and a bottle.
-Its face is drawn so that the publisher's face detector finds it, so the
-blur in `out/p2_tier2.jpg` is visible. `--image PATH` and `--webcam` work as
+By default the script signs the same drawn park scene as P0. Its face is
+drawn so that the publisher's face detector finds it, so the blur in
+`out/p2_tier2.jpg` is visible. `--image PATH` and `--webcam` work as
 in `p0_sign_verify.py`.
 
 The script plays both ends: the gateway that signs the capture, and a
