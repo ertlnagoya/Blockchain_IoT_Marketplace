@@ -157,6 +157,11 @@ outputs: .../out/p1_capture.jpg, .../out/p2_tier2.jpg
 all checks passed
 ```
 
+By default the script signs a drawn park scene with a person and a bottle.
+Its face is drawn so that the publisher's face detector finds it, so the
+blur in `out/p2_tier2.jpg` is visible. `--image PATH` and `--webcam` work as
+in `p0_sign_verify.py`.
+
 The script plays both ends: the gateway that signs the capture, and a
 software wallet that obtains a ViewerToken for each tier (full, access,
 summary) through `/marketplace/claim`, `/issuer/*` and `/verifier/*`, the
