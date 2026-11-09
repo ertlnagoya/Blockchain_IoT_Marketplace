@@ -66,6 +66,7 @@ processor = MessageProcessor(
     image_redactor=image_redactor,
     media_store_path=settings.media_store_path if c2pa_provenance else None,
     provenance_token=provenance_token,
+    c2pa_provenance=c2pa_provenance,
 )
 
 mqtt_subscriber = MQTTSubscriber(
@@ -416,8 +417,9 @@ def platform_data(
 
     # Stage P (spec §7.2): the provenance object is filtered per field.
     # Every tier sees the manifest label, validation state and token;
-    # the summary hash only receivers of the summary (a short summary
-    # could otherwise be confirmed by guessing); the signer name only
+    # the summary hash and the signed summary card (P3) only receivers of
+    # the summary (a short summary could otherwise be confirmed by
+    # guessing, and the card shows the text); the signer name only
     # Tier 2+ (image or image_redacted); the Tier 2 derivative's manifest
     # only receivers of image_redacted.
     _PROVENANCE_ALL = (
@@ -427,8 +429,10 @@ def platform_data(
 
     def _project_provenance(p: dict) -> dict:
         out = {k: p[k] for k in _PROVENANCE_ALL if k in p}
-        if "derived_sha256" in p and "description_summary" in allowed_views:
-            out["derived_sha256"] = p["derived_sha256"]
+        if "description_summary" in allowed_views:
+            for k in ("derived_sha256", "summary_card_url", "summary_manifest_label"):
+                if k in p:
+                    out[k] = p[k]
         if "signer" in p and ({"image", "image_redacted"} & set(allowed_views)):
             out["signer"] = p["signer"]
         if "redacted_manifest_label" in p and "image_redacted" in allowed_views:

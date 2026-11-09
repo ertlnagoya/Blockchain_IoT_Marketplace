@@ -269,6 +269,14 @@ def build_router(
         path = base / name
         if not path.is_file():
             raise HTTPException(status_code=404, detail="not_found")
+        if path.suffix == ".svg":
+            # Only the publisher writes SVG (the signed Tier 1 summary
+            # cards, Stage P / P3); upload still refuses it. Serve it
+            # inert anyway: no scripts, no external loads.
+            return FileResponse(path, media_type="image/svg+xml", headers={
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+                "X-Content-Type-Options": "nosniff",
+            })
         return FileResponse(path)
 
     @router.get("/ipfs/{cid_path:path}")

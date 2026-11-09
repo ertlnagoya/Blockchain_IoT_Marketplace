@@ -13,6 +13,16 @@ capture as a ``parentOf`` ingredient, and redacts the capture's
 thumbnail, camera and sensor assertions so Tier 2 recipients learn only
 that the image was made from a signed original.
 
+P3 (spec §5.5): the VLM summary of a signed image (Tier 1) is plain
+text, which the SDK cannot sign. The publisher renders it into a small
+SVG "summary card" and signs that card with the capture as an
+``inputTo`` ingredient (the same redactions as Tier 2), a
+``c2pa.created`` action of AI-generated media, and a
+``jp.ertl.iw3ip.derivation`` assertion holding the sha256 of the exact
+summary text, the model and the prompt hash. A Tier 1 recipient checks
+the card's signature and then compares the sha256 of the text it
+received with ``text_sha256``.
+
 Redaction cannot remove the capture manifest's title or the signer
 certificate (C2PA Security Considerations §4.3.5.1 / §4.3.5.2), so the
 gateway must keep the camera ID out of both (spec §5.2 / §6.1).
@@ -23,6 +33,7 @@ turns the feature on.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -31,8 +42,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Images the SDK can sign and read in this MVP. Video (fragmented MP4) is P3.
-SUPPORTED_TYPES = {"image/jpeg", "image/png"}
+# Formats the SDK signs and reads in this MVP: captured images, and SVG
+# for the Tier 1 summary card. Video (fragmented MP4) is P4.
+SUPPORTED_TYPES = {"image/jpeg", "image/png", "image/svg+xml"}
+
+TRAINED_ALGORITHMIC_MEDIA = (
+    "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
+)
 
 # Leading bytes of the supported formats. The type is taken from the
 # bytes, not the filename, so renaming a tampered JPEG to .webp does not
@@ -45,7 +61,34 @@ def sniff_type(body: bytes) -> str | None:
     for magic, content_type in _MAGIC:
         if body.startswith(magic):
             return content_type
+    head = body[:512].lstrip()
+    if head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in head):
+        return "image/svg+xml"
     return None
+
+
+def render_summary_svg(summary: str, *, width: int = 640, chars: int = 64) -> bytes:
+    """Render the summary text as an SVG card (wrapped, XML-escaped).
+
+    The card is what a viewer sees; the binding to the exact text is
+    ``text_sha256`` in the signed manifest, not the wrapped lines.
+    """
+    from textwrap import wrap
+    from xml.sax.saxutils import escape
+
+    lines = wrap(summary, chars) or [""]
+    height = 44 + 22 * len(lines)
+    rows = "".join(
+        f'<text x="16" y="{56 + 22 * i}">{escape(line)}</text>'
+        for i, line in enumerate(lines)
+    )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'font-family="sans-serif" font-size="15">'
+        f'<rect width="100%" height="100%" fill="#ffffff" stroke="#999999"/>'
+        f'<text x="16" y="26" font-size="12" fill="#666666">VLM summary (Tier 1)</text>'
+        f"{rows}</svg>"
+    ).encode("utf-8")
 
 # Capture assertions that must not reach Tier 2 recipients (spec §5.3).
 REDACT_LABELS = (
@@ -201,27 +244,9 @@ class C2paProvenance:
 
         The capture's thumbnail and the ``jp.ertl.iw3ip.capture`` /
         ``jp.ertl.iw3ip.sensor`` assertions are redacted from the
-        ingredient (spec §5.3); only labels actually present in the
-        capture manifest are listed, because the SDK refuses to redact
-        an assertion that does not exist.
+        ingredient (spec §5.3).
         """
-        if not self.can_sign:
-            raise ProvenanceError("publisher signer is not configured")
-        c2pa = self._c2pa
-        with c2pa.Reader(content_type, io.BytesIO(source), context=self._context) as r:
-            store = json.loads(r.json())
-        cap_label = store.get("active_manifest")
-        if not cap_label:
-            raise ProvenanceError("source has no active manifest")
-        cap_manifest = store["manifests"][cap_label]
-        present = {a.get("label") for a in cap_manifest.get("assertions", [])}
-        if cap_manifest.get("thumbnail"):
-            present.add("c2pa.thumbnail.claim")
-        redactions = [
-            f"self#jumbf=/c2pa/{cap_label}/c2pa.assertions/{lab}"
-            for lab in REDACT_LABELS
-            if lab in present
-        ]
+        redactions = self._redactions(source, content_type)
         definition = {
             "claim_generator_info": [{"name": "iw3ip-publisher", "version": "0.1.0"}],
             "title": title,
@@ -230,17 +255,13 @@ class C2paProvenance:
                     # the SDK refuses a first action other than created / opened
                     {"action": "c2pa.opened", "parameters": {"ingredientIds": ["capture"]}},
                     {"action": "c2pa.edited", "parameters": {"description": kind}},
-                    # the SDK does not add c2pa.redacted by itself
-                    *(
-                        {"action": "c2pa.redacted", "reason": "c2pa.PII.present",
-                         "parameters": {"redacted": uri}}
-                        for uri in redactions
-                    ),
+                    *_redacted_actions(redactions),
                 ]}},
                 {"label": "jp.ertl.iw3ip.derivation", "data": {"tier": 2, "kind": kind}},
             ],
             "redactions": redactions,
         }
+        c2pa = self._c2pa
         out = io.BytesIO()
         with c2pa.Builder(definition) as builder:
             builder.add_ingredient(
@@ -250,6 +271,98 @@ class C2paProvenance:
             )
             builder.sign(self._signer(), content_type, io.BytesIO(derived), out)
         return out.getvalue()
+
+    # ---- P3: Tier 1 summary card ----
+
+    def sign_summary(
+        self,
+        *,
+        source: bytes,
+        content_type: str,
+        summary: str,
+        model: str,
+        prompt_sha256: str = "",
+    ) -> bytes:
+        """Return a signed SVG card for the VLM ``summary`` of ``source``.
+
+        The capture is an ``inputTo`` ingredient (the VLM read it) with
+        the same redactions as Tier 2; ``jp.ertl.iw3ip.derivation``
+        carries ``text_sha256`` so the recipient can bind the text it
+        received to this signature.
+        """
+        redactions = self._redactions(source, content_type)
+        text_sha256 = hashlib.sha256(summary.encode("utf-8")).hexdigest()
+        definition = {
+            "claim_generator_info": [{"name": "iw3ip-publisher", "version": "0.1.0"}],
+            "title": "summary.svg",
+            "assertions": [
+                {"label": "c2pa.actions", "data": {"actions": [
+                    {
+                        "action": "c2pa.created",
+                        "digitalSourceType": TRAINED_ALGORITHMIC_MEDIA,
+                        "softwareAgent": {"name": model or "unknown"},
+                        "parameters": {"ingredientIds": ["capture"]},
+                    },
+                    *_redacted_actions(redactions),
+                ]}},
+                {"label": "jp.ertl.iw3ip.derivation", "data": {
+                    "tier": 1, "kind": "vlm_summary", "text_sha256": text_sha256,
+                    "model": model, "prompt_sha256": prompt_sha256,
+                }},
+            ],
+            "redactions": redactions,
+        }
+        c2pa = self._c2pa
+        out = io.BytesIO()
+        with c2pa.Builder(definition) as builder:
+            builder.add_ingredient(
+                {"title": "capture", "relationship": "inputTo", "label": "capture"},
+                content_type,
+                io.BytesIO(source),
+            )
+            builder.sign(
+                self._signer(), "image/svg+xml",
+                io.BytesIO(render_summary_svg(summary)), out,
+            )
+        return out.getvalue()
+
+    def derivation(self, body: bytes) -> dict | None:
+        """Return the ``jp.ertl.iw3ip.derivation`` assertion of the active
+        manifest of ``body`` (None when absent). Callers check the
+        signature with :meth:`verify` first."""
+        sniffed = sniff_type(body)
+        if sniffed is None:
+            return None
+        with self._c2pa.Reader(sniffed, io.BytesIO(body), context=self._context) as r:
+            store = json.loads(r.json())
+        manifest = (store.get("manifests") or {}).get(store.get("active_manifest") or "", {})
+        for a in manifest.get("assertions", []):
+            if a.get("label") == "jp.ertl.iw3ip.derivation":
+                return a.get("data")
+        return None
+
+    def _redactions(self, source: bytes, content_type: str) -> list[str]:
+        """JUMBF URIs of the capture assertions to redact (spec §5.3).
+
+        Only labels actually present in the capture manifest are listed,
+        because the SDK refuses to redact an assertion that does not exist.
+        """
+        if not self.can_sign:
+            raise ProvenanceError("publisher signer is not configured")
+        with self._c2pa.Reader(content_type, io.BytesIO(source), context=self._context) as r:
+            store = json.loads(r.json())
+        cap_label = store.get("active_manifest")
+        if not cap_label:
+            raise ProvenanceError("source has no active manifest")
+        cap_manifest = store["manifests"][cap_label]
+        present = {a.get("label") for a in cap_manifest.get("assertions", [])}
+        if cap_manifest.get("thumbnail"):
+            present.add("c2pa.thumbnail.claim")
+        return [
+            f"self#jumbf=/c2pa/{cap_label}/c2pa.assertions/{lab}"
+            for lab in REDACT_LABELS
+            if lab in present
+        ]
 
     def _signer(self):
         from cryptography.hazmat.primitives import hashes, serialization
@@ -266,6 +379,15 @@ class C2paProvenance:
         return self._c2pa.Signer.from_callback(
             sign, self._c2pa.C2paSigningAlg.ES256, self._signer_chain_pem, None
         )
+
+
+def _redacted_actions(redactions: list[str]):
+    # the SDK does not add c2pa.redacted by itself
+    return (
+        {"action": "c2pa.redacted", "reason": "c2pa.PII.present",
+         "parameters": {"redacted": uri}}
+        for uri in redactions
+    )
 
 
 # ---- sidecar records ----
@@ -291,13 +413,46 @@ def read_sidecar_for_url(store: Path, url: str | None) -> dict | None:
     """Return the stored verification result for a ``/media/<sha>.<ext>``
     URL, or None when the URL is not publisher-hosted or was uploaded
     while C2PA was off."""
+    name = _media_name(url)
+    if name is None:
+        return None
+    path = sidecar_path(store, name.split(".", 1)[0])
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text())
+
+
+def media_file_for_url(store: Path, url: str | None) -> Path | None:
+    """Return the stored file behind a ``/media/<sha>.<ext>`` URL."""
+    name = _media_name(url)
+    if name is None:
+        return None
+    path = store / name
+    return path if path.is_file() else None
+
+
+def store_summary_card(store: Path, card: bytes, source_url: str) -> tuple[str, str]:
+    """Save a signed summary card as ``<sha256>.svg`` next to the media
+    and return ``(sha256, url)``; the URL shares the origin of
+    ``source_url``. Cards are written here, never through /media/upload,
+    which keeps refusing SVG from outside."""
+    sha = hashlib.sha256(card).hexdigest()
+    path = store / f"{sha}.svg"
+    if not path.exists():
+        tmp = path.with_suffix(".svg.tmp")
+        tmp.write_bytes(card)
+        tmp.replace(path)
+    origin = source_url.split("?", 1)[0].rsplit("/media/", 1)[0]
+    return sha, f"{origin}/media/{sha}.svg"
+
+
+def _media_name(url: str | None) -> str | None:
     if not url or "/media/" not in url:
         return None
     name = url.split("?", 1)[0].rsplit("/media/", 1)[1]
     sha = name.split(".", 1)[0]
     if len(sha) != 64 or not all(c in "0123456789abcdef" for c in sha):
         return None
-    path = sidecar_path(store, sha)
-    if not path.is_file():
+    if "/" in name or "\\" in name:
         return None
-    return json.loads(path.read_text())
+    return name

@@ -88,6 +88,17 @@ def capture(certs, p0) -> bytes:
 
 @pytest.fixture
 def client(monkeypatch, tmp_path, certs):
+    yield from _client(monkeypatch, tmp_path, certs)
+
+
+@pytest.fixture
+def client_vlm(monkeypatch, tmp_path, certs):
+    """The same publisher with the stub VLM on (the VLM trust profile)."""
+    monkeypatch.setenv("VLM_BACKEND", "stub")
+    yield from _client(monkeypatch, tmp_path, certs)
+
+
+def _client(monkeypatch, tmp_path, certs):
     monkeypatch.setenv("SSI_ISSUER_KEY_PATH", str(tmp_path / "issuer_key.jwk.json"))
     monkeypatch.setenv("SSI_PRESENTATION_DEFS_DIR", str(REPO_ROOT / "examples" / "ssi_wallet"))
     monkeypatch.setenv("SSI_ISSUER_BASE_URL", "http://testserver")
@@ -359,3 +370,113 @@ def test_platform_data_projects_provenance(client, attrs, signer_visible):
     # legacy tiers have neither image_redacted nor description_summary
     assert "redacted_manifest_label" not in prov
     assert "derived_sha256" not in prov
+    assert "summary_card_url" not in prov
+    assert "summary_manifest_label" not in prov
+
+
+# ---- P3: signed Tier 1 summary card ----
+
+def _derivation(prov, body: bytes) -> dict:
+    d = prov.derivation(body)
+    assert d is not None
+    return d
+
+
+def test_summary_card_binds_text_to_capture(client, capture):
+    _, pm = client
+    prov = pm.c2pa_provenance
+    from publisher.app.c2pa_provenance import sniff_type
+
+    text = "An adult dropped a piece of litter near a public location & <gate>."
+    card = prov.sign_summary(source=capture, content_type="image/jpeg",
+                             summary=text, model="stub-vlm/v0", prompt_sha256="ab" * 32)
+    assert sniff_type(card) == "image/svg+xml"
+    res = prov.verify(card)
+    assert res.validation_state == "Trusted"
+    assert res.signer == "iw3ip-publisher"
+    d = _derivation(prov, card)
+    assert d["tier"] == 1 and d["kind"] == "vlm_summary"
+    assert d["text_sha256"] == hashlib.sha256(text.encode()).hexdigest()
+    assert d["model"] == "stub-vlm/v0" and d["prompt_sha256"] == "ab" * 32
+
+    with c2pa.Reader("image/svg+xml", io.BytesIO(card), context=prov._context) as r:
+        store = json.loads(r.json())
+    active = store["manifests"][store["active_manifest"]]
+    assert [i["relationship"] for i in active["ingredients"]] == ["inputTo"]
+    created = active["assertions"][0]["data"]["actions"][0]
+    assert created["action"] == "c2pa.created"
+    assert created["digitalSourceType"].endswith("/trainedAlgorithmicMedia")
+    cap_label = prov.verify(capture, "image/jpeg").manifest_label
+    remaining = [a["label"] for a in store["manifests"][cap_label]["assertions"]]
+    assert "jp.ertl.iw3ip.capture" not in remaining
+    assert "jp.ertl.iw3ip.sensor" not in remaining
+    assert b"cam01" not in card
+    # the text is escaped, so the card stays well-formed XML
+    assert b"&amp;" in card and b"&lt;gate&gt;" in card
+
+    # a changed word in the card is caught
+    i = card.find(b"litter")
+    assert prov.verify(card[:i] + b"L" + card[i + 1:]).validation_state == "Invalid"
+
+
+def test_pipeline_signs_summary_card(client_vlm, capture):
+    tc, pm = client_vlm
+    up = _upload(tc, capture).json()
+    tc.post("/consents", json=json.loads((REPO_ROOT / "examples" / "consent_possible_littering.json").read_text()))
+    pm.processor.platform_client = type("P", (), {"send": staticmethod(pm.app.state.ingested.append)})()
+    payload = json.loads((REPO_ROOT / "examples" / "payload_possible_littering.json").read_text())
+    payload["image_url"] = up["url"]
+    r = tc.post("/simulate/publish", json={
+        "topic": "homeassistant/event/possible_littering", "payload": payload,
+        "purpose": "community_cleaning",
+    })
+    assert r.json()["status"] == "allowed", r.text
+    row = pm.app.state.ingested[-1]
+    prov = row["provenance"]
+    summary = row["description_summary"]
+    assert prov["derived_sha256"] == hashlib.sha256(summary.encode()).hexdigest()
+    assert prov["summary_card_url"].endswith(".svg")
+    assert "provenance_summary_unavailable" not in row.get("processing_warnings", [])
+
+    got = tc.get("/media/" + prov["summary_card_url"].rsplit("/media/", 1)[1])
+    assert got.status_code == 200
+    assert got.headers["content-type"].startswith("image/svg+xml")
+    assert "default-src 'none'" in got.headers["content-security-policy"]
+    card = got.content
+    res = pm.c2pa_provenance.verify(card)
+    assert res.validation_state == "Trusted"
+    assert res.manifest_label == prov["summary_manifest_label"]
+    d = _derivation(pm.c2pa_provenance, card)
+    assert d["text_sha256"] == prov["derived_sha256"]
+    assert d["model"] == row["description_model"]
+    assert d["prompt_sha256"] == pm.processor.vlm_client.summary_prompt_sha256()
+    reasons = [l["reason"] for l in pm.audit_repo.list_recent(50)
+               if l["raw_topic"] == "provenance/derived"]
+    assert any(x.startswith("tier1:" + prov["summary_manifest_label"]) for x in reasons)
+
+
+def test_svg_upload_is_still_refused(client):
+    tc, _ = client
+    r = tc.post("/media/upload", files={"file": ("x.svg", b"<svg xmlns='http://www.w3.org/2000/svg'/>", "image/svg+xml")})
+    assert r.status_code == 415
+
+
+@pytest.mark.parametrize("attrs", [_TIER3, _TIER2])
+def test_platform_data_shows_summary_card_to_summary_receivers(client_vlm, attrs):
+    tc, pm = client_vlm
+    pm.app.state.ingested.append({
+        "dataset_id": "home/env/temperature",
+        "data": {"value": 1},
+        "provenance": {
+            "manifest_label": "urn:c2pa:cap", "validation_state": "Trusted",
+            "derived_sha256": "ab" * 32, "summary_card_url": "http://p/media/x.svg",
+            "summary_manifest_label": "urn:c2pa:t1",
+        },
+    })
+    token, views = _viewer_token(tc, attrs)
+    assert "description_summary" in views
+    rows = tc.get("/platform/data", params={"dataset_id": "home/env/temperature"},
+                  headers={"Authorization": f"Bearer {token}"}).json()["rows"]
+    prov = rows[-1]["provenance"]
+    assert prov["summary_card_url"] == "http://p/media/x.svg"
+    assert prov["summary_manifest_label"] == "urn:c2pa:t1"

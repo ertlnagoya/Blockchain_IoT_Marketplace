@@ -67,18 +67,19 @@ TOKEN_URI_SELECTOR = "c87b56dd"
 
 # ---- HTTP helpers (standard library only) ----
 
-def http(method: str, url: str, *, body: bytes | None = None, headers: dict | None = None):
+def http(method: str, url: str, *, body: bytes | None = None, headers: dict | None = None,
+         timeout: float = 60):
     req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - local hands-on
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - local hands-on
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
 
 
-def post_json(url: str, obj: dict):
+def post_json(url: str, obj: dict, *, timeout: float = 60):
     status, raw = http("POST", url, body=json.dumps(obj).encode(),
-                       headers={"Content-Type": "application/json"})
+                       headers={"Content-Type": "application/json"}, timeout=timeout)
     return status, json.loads(raw or b"null")
 
 
@@ -171,6 +172,43 @@ def token_uri(rpc: str, contract: str, token_id: int) -> dict:
     return json.loads(base64.b64decode(uri.split(",", 1)[1]))
 
 
+def sign_capture(img, *, certs: Path, camera_id: str) -> bytes:
+    """Sign a capture as the gateway does (same manifest as p0_sign_verify.py)."""
+    capture_def = {
+        "claim_generator_info": [{"name": "iw3ip-gateway", "version": "0.1.0"}],
+        "title": "capture.jpg",
+        "assertions": [
+            {"label": "c2pa.actions", "data": {"actions": [
+                {"action": "c2pa.created", "digitalSourceType": p0.DIGITAL_CAPTURE}]}},
+            {"label": "jp.ertl.iw3ip.capture", "data": {
+                "camera_id": camera_id,
+                "captured_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "gateway_did": "did:jwk:<gateway>"}},
+            {"label": "jp.ertl.iw3ip.sensor", "data": {"readings": [
+                {"topic": "home/env/temperature", "value": 22.4, "unit": "Cel"}]}},
+        ],
+    }
+    out = io.BytesIO()
+    with c2pa.Builder(capture_def) as builder:
+        builder.sign(p0.make_signer(certs), "image/jpeg", p0.jpeg_bytes(img), out)
+    return out.getvalue()
+
+
+def publish_event(base: str, image_url: str, *, timeout: float = 60) -> tuple[dict, dict]:
+    """Publish the littering event with ``image_url``; return the publish
+    response and the newest ingested row for that image."""
+    consent = json.loads((REPO_ROOT / "examples" / "consent_possible_littering.json").read_text())
+    post_json(base + "/consents", consent)
+    payload = json.loads((REPO_ROOT / "examples" / "payload_possible_littering.json").read_text())
+    payload["image_url"] = image_url
+    payload["ts"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    _, pub = post_json(base + "/simulate/publish", {
+        "topic": TOPIC, "payload": payload, "purpose": "community_cleaning"}, timeout=timeout)
+    _, raw = http("GET", base + "/platform/ingest")
+    rows = [r for r in json.loads(raw) if r.get("image_url") == image_url]
+    return pub, (rows[-1] if rows else {})
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     src = parser.add_mutually_exclusive_group()
@@ -196,24 +234,7 @@ def main() -> int:
     # 1. gateway signs the capture (same manifest as p0_sign_verify.py)
     print(f"c2pa-python {p0.version('c2pa-python')} / c2pa-rs {c2pa.sdk_version()}")
     img = p0.capture_image(args)
-    capture_def = {
-        "claim_generator_info": [{"name": "iw3ip-gateway", "version": "0.1.0"}],
-        "title": "capture.jpg",
-        "assertions": [
-            {"label": "c2pa.actions", "data": {"actions": [
-                {"action": "c2pa.created", "digitalSourceType": p0.DIGITAL_CAPTURE}]}},
-            {"label": "jp.ertl.iw3ip.capture", "data": {
-                "camera_id": args.camera_id,
-                "captured_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "gateway_did": "did:jwk:<gateway>"}},
-            {"label": "jp.ertl.iw3ip.sensor", "data": {"readings": [
-                {"topic": "home/env/temperature", "value": 22.4, "unit": "Cel"}]}},
-        ],
-    }
-    out = io.BytesIO()
-    with c2pa.Builder(capture_def) as builder:
-        builder.sign(p0.make_signer(args.certs), "image/jpeg", p0.jpeg_bytes(img), out)
-    capture = out.getvalue()
+    capture = sign_capture(img, certs=args.certs, camera_id=args.camera_id)
     (args.out / "p1_capture.jpg").write_bytes(capture)
 
     # 2. P1: the publisher verifies uploads
@@ -239,17 +260,8 @@ def main() -> int:
                   "P1 tampered capture renamed to .webp is refused", f"{status} {detail and detail.get('error')}")
 
     # 3. P2: publish the event with the capture's image_url
-    consent = json.loads((REPO_ROOT / "examples" / "consent_possible_littering.json").read_text())
-    post_json(base + "/consents", consent)
-    payload = json.loads((REPO_ROOT / "examples" / "payload_possible_littering.json").read_text())
-    payload["image_url"] = up["url"]
-    payload["ts"] = dt.datetime.now(dt.timezone.utc).isoformat()
-    status, pub = post_json(base + "/simulate/publish", {
-        "topic": TOPIC, "payload": payload, "purpose": "community_cleaning"})
+    pub, row = publish_event(base, up["url"])
     checks.expect(pub.get("status") == "allowed", "P2 event is published", str(pub))
-    _, raw = http("GET", base + "/platform/ingest")
-    rows = [r for r in json.loads(raw) if r.get("image_url") == up["url"]]
-    row = rows[-1] if rows else {}
     prov = row.get("provenance") or {}
     checks.expect(prov.get("manifest_label") == c.get("manifest_label"),
                   "P2 row carries the capture's manifest label", str(prov.get("manifest_label")))
@@ -292,7 +304,7 @@ def main() -> int:
                   "tier access sees the Tier 2 manifest but not the raw image")
     checks.expect(bool(summary_p) and "signer" not in summary_p and "redacted_manifest_label" not in summary_p
                   and "derived_sha256" in summary_p,
-                  "tier summary sees only label, state, token and the summary hash")
+                  "tier summary sees label, state, token and the summary hash, not the signer")
     summary_text = seen["summary"].get("description_summary", "")
     checks.expect(hashlib.sha256(summary_text.encode()).hexdigest() == summary_p.get("derived_sha256"),
                   "summary text matches provenance.derived_sha256")

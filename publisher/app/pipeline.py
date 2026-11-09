@@ -11,7 +11,14 @@ from audit.repository import SQLiteAuditRepository
 from policy.engine import PolicyEngine
 from policy.store import ConsentStore
 from schemas.models import normalize
-from publisher.app.c2pa_provenance import read_sidecar_for_url
+from publisher.app.c2pa_provenance import (
+    C2paProvenance,
+    media_file_for_url,
+    read_sidecar_for_url,
+    sniff_type,
+    store_summary_card,
+    write_sidecar,
+)
 from publisher.app.chain_client import ProvenanceMintError, ProvenanceTokenClient
 from publisher.app.image_redactor import ImageRedactor, RedactionError
 from publisher.app.platform_client import PlatformClient
@@ -34,6 +41,7 @@ class MessageProcessor:
         image_redactor: ImageRedactor | None = None,
         media_store_path: str | None = None,
         provenance_token: ProvenanceTokenClient | None = None,
+        c2pa_provenance: C2paProvenance | None = None,
     ) -> None:
         self.publisher_id = publisher_id
         self.default_purpose = default_purpose
@@ -51,6 +59,8 @@ class MessageProcessor:
         # set, rows whose image_url has one gain a `provenance` object.
         self.media_store = Path(media_store_path) if media_store_path else None
         self.provenance_token = provenance_token
+        # P3: signs the Tier 1 summary card when it can sign
+        self.c2pa = c2pa_provenance
 
     def process_message(
         self,
@@ -225,8 +235,9 @@ class MessageProcessor:
         ``manifest_label`` / ``validation_state`` / ``signer`` come from
         the verification /media/upload stored for ``image_url``;
         ``redacted_manifest_label`` from the signed Tier 2 image;
-        ``derived_sha256`` is the sha256 of the Tier 1 summary text,
-        which C2PA cannot carry (spec §5.5); ``token_id`` from the
+        ``derived_sha256`` is the sha256 of the Tier 1 summary text and
+        ``summary_card_url`` / ``summary_manifest_label`` the signed SVG
+        card that binds that hash to the capture (spec §5.5); ``token_id`` from the
         ProvenanceToken of the image (spec §8), minted before the row is
         sent because the row carries it; a retry reuses the token. /platform/data
         decides which of these each tier sees.
@@ -252,6 +263,12 @@ class MessageProcessor:
         summary = envelope.get("description_summary")
         if out and isinstance(summary, str):
             out["derived_sha256"] = hashlib.sha256(summary.encode("utf-8")).hexdigest()
+            if self.c2pa is not None and self.c2pa.can_sign and source and source.get("present"):
+                card = self._summary_card(envelope, summary)
+                if card is None:
+                    warnings.append("provenance_summary_unavailable")
+                else:
+                    out.update(card)
         if source and self.provenance_token is not None:
             sha = envelope["image_url"].split("?", 1)[0].rsplit("/", 1)[1].split(".", 1)[0]
             try:
@@ -273,6 +290,43 @@ class MessageProcessor:
                     out["token_reused"] = True
         return out or None
 
+    def _summary_card(self, envelope: dict, summary: str) -> dict | None:
+        """Sign the Tier 1 summary card (spec §5.5) and store it beside the
+        media. Returns ``{summary_card_url, summary_manifest_label}`` or
+        None when signing failed (the row still goes out, with a warning)."""
+        source_url = envelope["image_url"]
+        path = media_file_for_url(self.media_store, source_url)
+        if path is None:
+            return None
+        body = path.read_bytes()
+        content_type = sniff_type(body)
+        if content_type is None:
+            return None
+        try:
+            card = self.c2pa.sign_summary(
+                source=body,
+                content_type=content_type,
+                summary=summary,
+                model=envelope.get("description_model") or "",
+                prompt_sha256=(
+                    self.vlm_client.summary_prompt_sha256()
+                    if self.vlm_client is not None else ""
+                ),
+            )
+            checked = self.c2pa.verify(card)
+        except Exception as exc:  # noqa: BLE001 - SDK and IO errors alike
+            logger.warning("summary card signing failed: %s", exc)
+            return None
+        if checked.validation_state == "Invalid":
+            logger.warning("summary card did not verify: %s", checked.failure_codes)
+            return None
+        sha, url = store_summary_card(self.media_store, card, source_url)
+        write_sidecar(self.media_store, sha, checked)
+        return {
+            "summary_card_url": url,
+            "summary_manifest_label": checked.manifest_label,
+        }
+
     def _audit_provenance(
         self, provenance: dict | None, *, dataset_id: str, purpose: str,
         message_hash: str,
@@ -287,6 +341,18 @@ class MessageProcessor:
                     dataset_id=dataset_id, purpose=purpose,
                     reason=(
                         f"tier2:{provenance['redacted_manifest_label']}"
+                        f":ingredient={provenance.get('manifest_label')}"
+                    ),
+                    message_hash=message_hash, raw_topic="provenance/derived",
+                )
+            )
+        if provenance.get("summary_manifest_label"):
+            self.audit_repo.write(
+                AuditLogRecord(
+                    ts=now, action="allow", subject_did="publisher",
+                    dataset_id=dataset_id, purpose=purpose,
+                    reason=(
+                        f"tier1:{provenance['summary_manifest_label']}"
                         f":ingredient={provenance.get('manifest_label')}"
                     ),
                     message_hash=message_hash, raw_topic="provenance/derived",

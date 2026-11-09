@@ -1,4 +1,4 @@
-# c2pa_provenance — Stage P (C2PA provenance) P0, P1, P2
+# c2pa_provenance — Stage P (C2PA provenance) P0–P3
 
 Check program for the design spec
 [C2PA provenance pipeline (Stage P)](https://www.ertl.jp/iw3ip.github.io/design/c2pa-provenance-spec/).
@@ -16,11 +16,18 @@ ProvenanceToken on a Hardhat node, and `/platform/data` shows each tier only
 part of the provenance. The second hands-on page is
 [Connect provenance to the publisher and the chain (C2PA / Stage P, P1-P2)](https://www.ertl.jp/iw3ip.github.io/hands-on/c2pa-provenance-publisher/).
 
+P3 adds the VLM: the publisher renders the VLM's Tier 1 summary into an
+SVG "summary card" and signs it with the capture as its input, so a
+recipient who gets only the text can check which signed image and which
+model it came from. The third hands-on page is
+[Trace a VLM summary back to the image (C2PA / Stage P, P3)](https://www.ertl.jp/iw3ip.github.io/hands-on/c2pa-provenance-vlm/).
+
 ## Files
 
 - `make_test_certs.py` — creates a private test CA, an ES256 gateway certificate and the publisher's signing certificate under `certs/`
 - `p0_sign_verify.py` — P0: signs a capture, makes the Tier 2 derivative, and runs the checks
 - `p1p2_publisher_flow.py` — P1 + P2: sends the signed capture through the publisher and checks verification, the signed Tier 2 image, the per-tier provenance, the token and the audit log
+- `p3_vlm_summary.py` — P3: follows the VLM summary a Tier 1 recipient gets back to the signed capture through the signed summary card, and checks that changed text or a changed card is caught
 - `certs/`, `out/` — generated; ignored by git (the keys are for local tests only)
 
 ## Run
@@ -139,14 +146,14 @@ Expected output (manifest labels differ per run):
 [PASS] P2 capture thumbnail / camera / sensor are redacted  (leaked=[])
 [PASS] P2 camera ID appears nowhere in the Tier 2 bytes  (0 hit(s))
   full     views=['event', 'image', 'video', 'image_redacted', 'description_full', 'description_summary']
-           image_url=yes image_url_redacted=yes provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'redacted_manifest_label', 'signer', 'token_contract', 'token_id', 'validation_state']
+           image_url=yes image_url_redacted=yes provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'redacted_manifest_label', 'signer', 'summary_card_url', 'summary_manifest_label', 'token_contract', 'token_id', 'validation_state']
   access   views=['event', 'image_redacted', 'description_full', 'description_summary']
-           image_url=no image_url_redacted=yes provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'redacted_manifest_label', 'signer', 'token_contract', 'token_id', 'validation_state']
+           image_url=no image_url_redacted=yes provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'redacted_manifest_label', 'signer', 'summary_card_url', 'summary_manifest_label', 'token_contract', 'token_id', 'validation_state']
   summary  views=['event', 'description_summary']
-           image_url=no image_url_redacted=no provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'token_contract', 'token_id', 'validation_state']
+           image_url=no image_url_redacted=no provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'summary_card_url', 'summary_manifest_label', 'token_contract', 'token_id', 'validation_state']
 [PASS] tier full sees signer and the Tier 2 manifest
 [PASS] tier access sees the Tier 2 manifest but not the raw image
-[PASS] tier summary sees only label, state, token and the summary hash
+[PASS] tier summary sees label, state, token and the summary hash, not the signer
 [PASS] summary text matches provenance.derived_sha256
 [PASS] P2 ProvenanceToken anchors the manifest label and image sha256  (token #1)
 [PASS] audit log has provenance/verified
@@ -179,8 +186,90 @@ Every tier, including summary, sees the capture's `manifest_label` and the
 `token_id`, so two recipients of different tiers can tell that their rows
 come from the same capture. This follows spec §7.2 and is a known limit.
 
+## P3: the VLM summary
+
+The C2PA SDK cannot sign plain text, so the publisher renders the summary
+into an SVG card and signs the card. The card's manifest has
+
+- the capture as an `inputTo` ingredient, with the same redactions as the Tier 2 image
+- a `c2pa.created` action with `digitalSourceType` `trainedAlgorithmicMedia` and the model as `softwareAgent`
+- `jp.ertl.iw3ip.derivation` with `text_sha256` (sha256 of the exact summary text), `model` and `prompt_sha256`
+
+The card is stored as `/media/<sha256>.svg` and only the summary tier and
+above see its URL (`provenance.summary_card_url`). `/media/upload` still
+refuses SVG; cards are served with `Content-Security-Policy: default-src 'none'`.
+
+With the same publisher as P1 + P2 (VLM stub), run:
+
+```bash
+uv run --no-project --with c2pa-python --with pillow --with cryptography \
+  python examples/hands_on/c2pa_provenance/p3_vlm_summary.py
+```
+
+Expected output:
+
+```
+[PASS] capture is Trusted at the publisher  (200 Trusted)
+[PASS] event is published  (0.2s)
+[PASS] VLM wrote a summary  (model=stub-vlm/v0)
+[PASS] publisher signed the summary card  (warnings=[])
+  summary tier views=['event', 'description_summary']
+  keys=['dataset_id', 'description_generated_at', 'description_model', 'description_summary', 'issued_at', 'payload', 'provenance', 'publisher_id', 'purpose', 'schema_version', 'subject_did']
+  provenance=['anchor_tx', 'derived_sha256', 'manifest_label', 'summary_card_url', 'summary_manifest_label', 'token_contract', 'token_id', 'validation_state']
+  text: [stub VLM:...] An adult dropped a piece of litter near a public location. Source content-type: image/jpeg.
+[PASS] summary tier gets the text but no image and no full description
+[PASS] summary tier gets the card URL but not the gateway signer
+[PASS] card is Trusted and signed by the publisher  (Trusted)
+[PASS] card manifest matches provenance.summary_manifest_label
+[PASS] sha256 of the received text matches the signed text_sha256  (model=stub-vlm/v0 prompt=...)
+[PASS] card says the text is AI-generated  (stub-vlm/v0)
+[PASS] card's input is the signed capture  (urn:c2pa:...)
+[PASS] capture thumbnail / camera / sensor are redacted from the card  (leaked=[] hits=0)
+[PASS] ProvenanceToken anchors the card's input manifest  (token #...)
+[PASS] a changed word in the text no longer matches the card  (...)
+[PASS] a changed letter in the card is Invalid  (Invalid)
+[PASS] audit log records the summary card under provenance/derived
+
+outputs: .../out/p3_capture.jpg, .../out/p3_summary_card.svg
+all checks passed
+```
+
+To use a real VLM, start Ollama and restart the publisher with
+`VLM_BACKEND=ollama` (the model is cached in the `vlm_models` volume):
+
+```bash
+VLM_MODEL=llava docker compose -f infra/docker-compose.yml --profile vlm up -d vlm vlm-pull
+```
+
+```bash
+VLM_BACKEND=ollama VLM_MODEL=llava VLM_TIMEOUT_SEC=600 \
+PROVENANCE_TOKEN_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3 \
+  docker compose -f infra/docker-compose.yml -f infra/docker-compose.c2pa.yml up -d publisher
+```
+
+The publish call then waits for two inferences (full and summary).
+On a Mac (Apple M3) with Docker on CPU only (8 CPUs, 7.7 GB memory), llava took 217 s for both inferences and
+all 16 checks passed:
+
+```
+[PASS] event is published  (217.3s)
+[PASS] VLM wrote a summary  (model=ollama/llava)
+  text: The image depicts an avatar of a young man standing outdoors during the day. There is a solitary object nearby that appears to be a water bottle or container, but its purpose is unclear from the image alone.
+[PASS] card says the text is AI-generated  (ollama/llava)
+```
+
+With the default `VLM_TIMEOUT_SEC=180` the first llava call timed out
+(`vlm_unavailable`). `moondream` returned an empty summary for the drawn
+scene, so no card was made.
+
+The summary prompt asks for generic terms such as "an adult", yet llava
+wrote "young man", and the card is still `Trusted`. The signature shows
+who made the text from which image with which model and prompt; it does
+not show that the text is free of personal information.
+
 ## Not covered yet
 
 - Content Credentials Verify (the page shows our test CA as untrusted)
-- RTSP IP cameras, fragmented MP4, Raspberry Pi timing (P3–P4)
-- A signing key in a TPM or secure element (P4)
+- A signed card for `description_full` (Tier 3 and 2 receive the full text without one)
+- RTSP IP cameras, fragmented MP4, Raspberry Pi timing (P4–P5)
+- A signing key in a TPM or secure element (P5)
