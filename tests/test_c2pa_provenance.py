@@ -9,7 +9,10 @@ Verifies:
   - the pipeline attaches `provenance` to the row and mints a token
   - /platform/data shows the signer only to Tier 2+
 
-Needs c2pa-python and Pillow; skipped without them. The chain client
+Needs c2pa-python and Pillow; skipped without them. Run with
+``uv run --with c2pa-python --with pillow python -m pytest tests/test_c2pa_provenance.py``
+(``python -m``: a bare ``pytest`` resolves to the project venv and does
+not see the ``--with`` packages). The chain client
 (ProvenanceToken.mint) is tested in test_provenance_token_client.py.
 """
 from __future__ import annotations
