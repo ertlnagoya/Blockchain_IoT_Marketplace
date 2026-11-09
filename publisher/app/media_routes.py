@@ -33,6 +33,14 @@ to ``null`` in case B mode):
       "ipfs_gateway_url": "http://publisher/ipfs/bafy..." | null
     }
 
+Stage P (P1): when a ``C2paProvenance`` is passed, images are checked
+for a C2PA manifest before they are stored. An ``Invalid`` manifest is
+refused with ``400 c2pa_invalid``; otherwise the response gains a
+``c2pa`` object (``present``, ``manifest_label``, ``validation_state``,
+``signer``, ``trusted``), the result is kept under the store as
+``.c2pa/<sha256>.json`` for the pipeline (never served), and an audit record with
+``raw_topic = provenance/verified`` is written.
+
 Security: ``/media/<name>`` and ``/ipfs/<cid>`` are unauthenticated on
 purpose — the wallet running on the buyer's iPhone must be able to
 fetch the blob after the tier-aware projection hands it out.
@@ -44,11 +52,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import mimetypes
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+
+from audit.models import AuditLogRecord
+from publisher.app.c2pa_provenance import write_sidecar
 
 
 logger = logging.getLogger(__name__)
@@ -137,6 +149,8 @@ def build_router(
     public_base_url: str = "",
     ipfs_api_url: str = "",
     ipfs_gateway_url: str = "",
+    provenance=None,
+    audit_repo=None,
 ) -> APIRouter:
     """Return a router with /media/upload + /media/{name} + /ipfs/{cid}.
 
@@ -153,6 +167,9 @@ def build_router(
     publisher reverse-proxies ``/ipfs/<cid>`` to. When empty we leave
     the proxy off — callers can dereference the CID through any public
     gateway.
+
+    ``provenance`` (a ``C2paProvenance``) turns on the Stage P checks;
+    ``audit_repo`` receives the ``provenance/verified`` records.
     """
     base = Path(store_path)
     base.mkdir(parents=True, exist_ok=True)
@@ -169,6 +186,34 @@ def build_router(
         if not body:
             raise HTTPException(status_code=400, detail="empty_body")
         sha = hashlib.sha256(body).hexdigest()
+        c2pa_info = None
+        if provenance is not None:
+            # the type is sniffed from the bytes, not from the filename
+            result = provenance.verify(body)
+            c2pa_info = result.to_dict()
+            if audit_repo is not None and result.present:
+                audit_repo.write(
+                    AuditLogRecord(
+                        ts=datetime.now(timezone.utc).isoformat(),
+                        action="allow" if result.validation_state != "Invalid" else "deny",
+                        subject_did=result.signer or "unknown",
+                        dataset_id="",
+                        purpose="provenance",
+                        reason=(
+                            f"c2pa:{result.validation_state}:{result.manifest_label}"
+                            f":trusted={str(result.trusted).lower()}"
+                        ),
+                        message_hash=sha,
+                        raw_topic="provenance/verified",
+                    )
+                )
+            if result.validation_state == "Invalid":
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": "c2pa_invalid", "c2pa": c2pa_info},
+                )
+            if result.present:
+                write_sidecar(base, sha, result)
         name = f"{sha}{ext}"
         path = base / name
         if not path.exists():
@@ -211,6 +256,8 @@ def build_router(
                 "byte_size": len(body),
                 "cid": cid,
                 "ipfs_gateway_url": gateway_url,
+                # Stage P: null when the C2PA check is off
+                "c2pa": c2pa_info,
             }
         )
 

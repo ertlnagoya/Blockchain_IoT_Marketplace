@@ -96,6 +96,28 @@ class Settings(BaseSettings):
     # here without changes to /semantic/* call sites.
     semantic_analyzer_backend: str = ""
 
+    # Stage P (C2PA provenance), P1: verify the C2PA manifest of every
+    # uploaded image and refuse Invalid ones (400 c2pa_invalid). Needs
+    # c2pa-python. The trust anchor is the CA that issued the gateway
+    # certificate; without it signed uploads are Valid but untrusted.
+    c2pa_enabled: bool = False
+    c2pa_trust_anchors_path: str = ""
+    # Stage P, P2: the publisher's own signing certificate chain and key,
+    # used to sign the Tier 2 face-blurred image with a manifest that
+    # references the capture. Empty = verify only, no derivative manifest.
+    c2pa_signer_chain_path: str = ""
+    c2pa_signer_key_path: str = ""
+
+    # Stage P, P2: ProvenanceToken (ERC-721) address and JSON-RPC URL.
+    # When both are set, every published event whose image carries a
+    # valid manifest mints one token holding the manifest label, the
+    # image sha256 and CID (spec §8). The minter is an unlocked account
+    # of the Hardhat node (eth_accounts[0] unless set), so this is for
+    # the local hands-on only.
+    provenance_token_address: str = ""
+    provenance_rpc_url: str = ""
+    provenance_minter_address: str = ""
+
     # Allow HIGH-tier viewers to receive `unknown_sensitive` regions
     # un-masked. Default: False (fail-closed). Operators with a manual
     # review queue downstream can flip this to True.

@@ -133,7 +133,8 @@ def build_router(
             raise HTTPException(status_code=status, detail=f"seller_token_{reason}")
 
         result: dict[str, Any] = processor.process_message(
-            req.topic, req.payload, req.purpose
+            req.topic, req.payload, req.purpose,
+            seller_did=seller_token.seller_did,
         )
         # Keep the SellerToken-derived identity in the response so the
         # /provider page can show the provider who authored what.
