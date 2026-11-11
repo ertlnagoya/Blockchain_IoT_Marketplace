@@ -12,7 +12,8 @@ python examples/hands_on/data_user_vc_tiered/provider_with_media.py \
 
 The script:
 
-1. Generates a 1×1 JPEG / MP4 fixture under `fixtures/` (or uses
+1. Writes a 16×16 grey JPEG fixture under `fixtures/`, and an MP4
+   placeholder that holds the same JPEG bytes (or uses the
    `--image` / `--video` paths you supply).
 2. Uploads both via `POST /media/upload` (the publisher's media gateway
    dedupes on sha256, so re-runs are cheap).
