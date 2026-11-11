@@ -1,0 +1,26 @@
+# Stage P (C2PA provenance) P1 + P2 hands-on overlay.
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.c2pa.yml \
+#     up -d --build publisher
+#
+# Mounts the test certificates made by
+# examples/hands_on/c2pa_provenance/make_test_certs.py read-only and turns
+# on the C2PA checks (P1), the signed Tier 2 blur (P2), the VLM stub
+# (so the 4-tier projection with image_redacted / description_summary
+# is active) and the ProvenanceToken minting on the Hardhat node of the
+# host. Set PROVENANCE_TOKEN_ADDRESS to the address printed by
+# iot-market/scripts/deployProvenanceToken.ts before `up`.
+services:
+  publisher:
+    environment:
+      C2PA_ENABLED: "true"
+      C2PA_TRUST_ANCHORS_PATH: /c2pa/ca.pem
+      C2PA_SIGNER_CHAIN_PATH: /c2pa/publisher_chain.pem
+      C2PA_SIGNER_KEY_PATH: /c2pa/publisher.key
+      IMAGE_REDACTION_BACKEND: ${IMAGE_REDACTION_BACKEND:-opencv}
+      VLM_BACKEND: ${VLM_BACKEND:-stub}
+      PLATFORM_INGEST_READ_ENABLED: ${PLATFORM_INGEST_READ_ENABLED:-true}
+      PROVENANCE_TOKEN_ADDRESS: ${PROVENANCE_TOKEN_ADDRESS:-}
+      PROVENANCE_RPC_URL: ${PROVENANCE_RPC_URL:-http://host.docker.internal:8545}
+    volumes:
+      - ../examples/hands_on/c2pa_provenance/certs:/c2pa:ro

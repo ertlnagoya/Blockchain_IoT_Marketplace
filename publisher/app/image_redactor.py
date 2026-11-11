@@ -21,6 +21,14 @@ pipeline reads each backend separately and emits the corresponding
 
 See ``docs/hands-on/data-user-vc-tiered-spec.md`` "Face / PII blur"
 for the schema contract this module implements.
+
+Stage P (P2): when a ``C2paProvenance`` that can sign is injected and
+the source image carries a C2PA manifest, the opencv backend signs the
+blurred bytes with a Tier 2 derivative manifest (capture as ingredient,
+capture thumbnail / camera / sensor assertions redacted) before the
+upload. The result then carries ``image_redacted_c2pa`` (the upload's
+verification result) or ``provenance_derivation_failed`` when signing
+failed and the blurred image went out unsigned.
 """
 from __future__ import annotations
 
@@ -159,14 +167,15 @@ class ImageRedactor:
     on ``if image_redactor is not None``.
     """
 
-    def __init__(self, *, backend: str) -> None:
+    def __init__(self, *, backend: str, provenance=None) -> None:
         self.backend = backend
+        self.provenance = provenance
 
     @classmethod
-    def from_settings(cls, settings) -> "ImageRedactor | None":
+    def from_settings(cls, settings, provenance=None) -> "ImageRedactor | None":
         if not settings.image_redaction_backend:
             return None
-        return cls(backend=settings.image_redaction_backend)
+        return cls(backend=settings.image_redaction_backend, provenance=provenance)
 
     def blur_pii(self, *, image_url: str, content_type: str) -> dict:
         """Return ``{image_url_redacted, image_cid_redacted}`` (the
@@ -213,6 +222,20 @@ class ImageRedactor:
         ext = os.path.splitext(path)[1] or ".jpg"
 
         blurred = _opencv_blur_faces(source_bytes, ext=ext)
+        derivation_failed = False
+        if self.provenance is not None and self.provenance.can_sign:
+            source_c2pa = self.provenance.verify(source_bytes, content_type)
+            if source_c2pa.present:
+                try:
+                    blurred = self.provenance.sign_tier2(
+                        source=source_bytes,
+                        derived=blurred,
+                        content_type=content_type,
+                        title=f"tier2{ext}",
+                    )
+                except Exception as exc:  # noqa: BLE001 - ship the unsigned blur
+                    logger.warning("tier2 c2pa signing failed: %s", exc)
+                    derivation_failed = True
 
         # POST back to the publisher's /media/upload to land the
         # redacted bytes under /media/<sha>.<ext> with dedup + IPFS.
@@ -223,7 +246,12 @@ class ImageRedactor:
             filename=f"redacted{ext}",
             content_type=content_type,
         )
-        return {
+        out = {
             "image_url_redacted": meta.get("url"),
             "image_cid_redacted": meta.get("cid"),
         }
+        if meta.get("c2pa") is not None:
+            out["image_redacted_c2pa"] = meta["c2pa"]
+        if derivation_failed:
+            out["provenance_derivation_failed"] = True
+        return out

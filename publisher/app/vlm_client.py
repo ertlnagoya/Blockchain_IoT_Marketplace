@@ -232,6 +232,19 @@ class VLMClient:
             model=settings.vlm_model,
         )
 
+    def summary_prompt_sha256(self) -> str:
+        """sha256 of the prompt that produced ``description_summary``.
+
+        Stage P (P3) records it in the signed Tier 1 summary card so a
+        recipient can tell which instruction the model followed. The
+        stub has no prompt; its fixed text stands in for one.
+        """
+        if self.backend == "ollama":
+            prompt = _prompts_for_model(self.model)["summary"]
+        else:
+            prompt = f"{self.backend}:summary"
+        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
     def describe(self, *, image_url: str, content_type: str) -> dict:
         """Return ``{description_full, description_summary,
         description_model, description_generated_at}``.

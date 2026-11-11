@@ -9,9 +9,11 @@ Usage:
         python examples/hands_on/c2pa_provenance/make_test_certs.py
 
 Writes ``certs/`` next to this file:
-    ca.pem       test CA certificate (register it as a trust anchor)
-    gw.key       gateway private key (PKCS#8 PEM, test use only)
-    chain.pem    gateway certificate + CA certificate (passed to the signer)
+    ca.pem                 test CA certificate (register it as a trust anchor)
+    gw.key                 gateway private key (PKCS#8 PEM, test use only)
+    chain.pem              gateway certificate + CA certificate (passed to the signer)
+    publisher.key          publisher private key (P2: signs the Tier 2 image)
+    publisher_chain.pem    publisher certificate + CA certificate
 
 The keys are for local experiments only. Never use them in production.
 """
@@ -37,7 +39,7 @@ def _name(cn: str) -> x509.Name:
     ])
 
 
-def build(out_dir: Path, gateway_cn: str) -> None:
+def build(out_dir: Path, gateway_cn: str, publisher_cn: str = "iw3ip-publisher") -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     now = dt.datetime.now(dt.timezone.utc)
 
@@ -65,12 +67,31 @@ def build(out_dir: Path, gateway_cn: str) -> None:
         .sign(ca_key, hashes.SHA256())  # SHA-1 is rejected by the SDK
     )
 
-    gw_key = ec.generate_private_key(ec.SECP256R1())
-    gw_cert = (
+    pem = serialization.Encoding.PEM
+    (out_dir / "ca.pem").write_bytes(ca_cert.public_bytes(pem))
+    for cn, key_name, chain_name in (
+        (gateway_cn, "gw.key", "chain.pem"),
+        (publisher_cn, "publisher.key", "publisher_chain.pem"),
+    ):
+        key, cert = _leaf(cn, ca_key, ca_name, now)
+        (out_dir / chain_name).write_bytes(cert.public_bytes(pem) + ca_cert.public_bytes(pem))
+        (out_dir / key_name).write_bytes(
+            key.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+        )
+    print(
+        f"wrote {out_dir}/ca.pem, chain.pem, gw.key (CN={gateway_cn}), "
+        f"publisher_chain.pem, publisher.key (CN={publisher_cn})"
+    )
+
+
+def _leaf(cn: str, ca_key, ca_name: x509.Name, now: dt.datetime):
+    """Issue an ES256 signing certificate the C2PA SDK accepts."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    cert = (
         x509.CertificateBuilder()
-        .subject_name(_name(gateway_cn))
+        .subject_name(_name(cn))
         .issuer_name(ca_name)
-        .public_key(gw_key.public_key())
+        .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(now - dt.timedelta(minutes=5))
         .not_valid_after(now + dt.timedelta(days=180))
@@ -86,20 +107,13 @@ def build(out_dir: Path, gateway_cn: str) -> None:
         )
         # C2PA requires an EKU on the signing certificate
         .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.EMAIL_PROTECTION]), critical=False)
-        .add_extension(x509.SubjectKeyIdentifier.from_public_key(gw_key.public_key()), critical=False)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
         .add_extension(
             x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False
         )
         .sign(ca_key, hashes.SHA256())
     )
-
-    pem = serialization.Encoding.PEM
-    (out_dir / "ca.pem").write_bytes(ca_cert.public_bytes(pem))
-    (out_dir / "chain.pem").write_bytes(gw_cert.public_bytes(pem) + ca_cert.public_bytes(pem))
-    (out_dir / "gw.key").write_bytes(
-        gw_key.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-    )
-    print(f"wrote {out_dir}/ca.pem, chain.pem, gw.key (CN={gateway_cn})")
+    return key, cert
 
 
 def main() -> None:
@@ -107,8 +121,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=HERE / "certs")
     # the CN stays in every Tier 2 derivative and cannot be redacted, so keep the camera ID out of it
     parser.add_argument("--gateway-cn", default="iw3ip-gateway")
+    parser.add_argument("--publisher-cn", default="iw3ip-publisher")
     args = parser.parse_args()
-    build(args.out, args.gateway_cn)
+    build(args.out, args.gateway_cn, args.publisher_cn)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ from publisher.app.models import SimulatePublishRequest
 from publisher.app.mqtt_subscriber import MQTTSubscriber
 from publisher.app.pipeline import MessageProcessor
 from publisher.app.platform_client import PlatformClient
+from publisher.app.c2pa_provenance import C2paProvenance
+from publisher.app.chain_client import ProvenanceTokenClient
 from publisher.app.image_redactor import ImageRedactor
 from publisher.app.media_routes import build_router as build_media_router
 from publisher.app.viewer_routes import build_router as build_viewer_router
@@ -46,7 +48,12 @@ platform_client = PlatformClient(settings.platform_api_url)
 # unchanged. With `--profile vlm` (compose) the env vars get set and
 # the corresponding clients spin up.
 vlm_client = VLMClient.from_settings(settings)
-image_redactor = ImageRedactor.from_settings(settings)
+# Stage P (C2PA provenance): None unless C2PA_ENABLED. P1 verifies
+# uploads in /media/upload; P2 signs the Tier 2 blur (redactor) and
+# mints a ProvenanceToken per event (pipeline) when configured.
+c2pa_provenance = C2paProvenance.from_settings(settings)
+provenance_token = ProvenanceTokenClient.from_settings(settings)
+image_redactor = ImageRedactor.from_settings(settings, provenance=c2pa_provenance)
 
 processor = MessageProcessor(
     publisher_id=settings.publisher_id,
@@ -57,6 +64,9 @@ processor = MessageProcessor(
     platform_client=platform_client,
     vlm_client=vlm_client,
     image_redactor=image_redactor,
+    media_store_path=settings.media_store_path if c2pa_provenance else None,
+    provenance_token=provenance_token,
+    c2pa_provenance=c2pa_provenance,
 )
 
 mqtt_subscriber = MQTTSubscriber(
@@ -140,6 +150,8 @@ app.include_router(
         public_base_url=settings.media_public_base_url,
         ipfs_api_url=settings.ipfs_api_url,
         ipfs_gateway_url=settings.ipfs_gateway_url,
+        provenance=c2pa_provenance,
+        audit_repo=audit_repo,
     )
 )
 
@@ -403,9 +415,36 @@ def platform_data(
     _DESCRIPTION_SUMMARY_KEYS = ("description_summary",)
     _AUDIT_KEYS = ("description_model", "description_generated_at")
 
+    # Stage P (spec §7.2): the provenance object is filtered per field.
+    # Every tier sees the manifest label, validation state and token;
+    # the summary hash and the signed summary card (P3) only receivers of
+    # the summary (a short summary could otherwise be confirmed by
+    # guessing, and the card shows the text); the signer name only
+    # Tier 2+ (image or image_redacted); the Tier 2 derivative's manifest
+    # only receivers of image_redacted.
+    _PROVENANCE_ALL = (
+        "manifest_label", "validation_state",
+        "token_id", "token_contract", "anchor_tx", "token_reused",
+    )
+
+    def _project_provenance(p: dict) -> dict:
+        out = {k: p[k] for k in _PROVENANCE_ALL if k in p}
+        if "description_summary" in allowed_views:
+            for k in ("derived_sha256", "summary_card_url", "summary_manifest_label"):
+                if k in p:
+                    out[k] = p[k]
+        if "signer" in p and ({"image", "image_redacted"} & set(allowed_views)):
+            out["signer"] = p["signer"]
+        if "redacted_manifest_label" in p and "image_redacted" in allowed_views:
+            out["redacted_manifest_label"] = p["redacted_manifest_label"]
+        return out
+
     def _project(row: dict) -> dict:
         out: dict = {}
         for k, v in row.items():
+            if k == "provenance" and isinstance(v, dict):
+                out[k] = _project_provenance(v)
+                continue
             if k in _IMAGE_KEYS and "image" not in allowed_views:
                 continue
             if k in _VIDEO_KEYS and "video" not in allowed_views:
