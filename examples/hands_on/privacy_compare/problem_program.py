@@ -79,7 +79,9 @@ def redact_faces(jpeg: bytes) -> tuple[bytes, int]:
             faces.append((x0, y0, x1 - x0, y1 - y0))
     for (x, y, w, h) in faces:
         # TODO 1: blur the face region img[y:y+h, x:x+w] in place.
-        #   Hint: cv2.GaussianBlur(region, (99, 99), 30) returns a blurred copy.
+        #   Hint: cv2.GaussianBlur(region, (k, k), 0) returns a blurred copy.
+        #   Make the kernel size k odd and at least as wide as the face: a
+        #   fixed k leaves large (close-up) faces recognisable.
         #   Widening the box a little also hides the hair line and chin.
         pass
     ok, buf = cv2.imencode(".jpg", img)
