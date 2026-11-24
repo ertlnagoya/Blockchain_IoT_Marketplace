@@ -81,3 +81,22 @@ def test_redact_faces_blurs_the_face_found_by_yunet():
     assert faces == 1
     again, faces_after = answer.redact_faces(blurred)
     assert faces_after == 0
+
+
+def test_blur_region_kernel_follows_the_region_width():
+    """The reference blur keeps the region size and blurs a wide (close-up)
+    region about as strongly, relative to its size, as a narrow one."""
+    import pytest
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    answer = _load("answer_program")
+    rng = np.random.default_rng(0)
+    for size in (60, 400):
+        # a pattern whose detail scales with the region (a face seen closer)
+        base = rng.integers(0, 256, (16, 16, 3), dtype=np.uint8)
+        region = cv2.resize(base, (size, size), interpolation=cv2.INTER_NEAREST)
+        out = answer.blur_region(region)
+        assert out.shape == region.shape
+        small = cv2.resize(out, (16, 16), interpolation=cv2.INTER_AREA).astype(float)
+        assert small.std() < 0.25 * base.std()
