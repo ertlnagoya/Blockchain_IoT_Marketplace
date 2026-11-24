@@ -29,8 +29,10 @@ realistic answers; without it, it returns a canned answer.
 
 ## Requirements
 
-- Python 3 with `opencv-python<5` (`pip install "opencv-python<5"`).
-  OpenCV 5 removed the Haar-cascade face detector used here.
+- Python 3 with `opencv-python` 4.8 or later (`pip install "opencv-python<5"`).
+  Faces are found with OpenCV's YuNet detector (`cv2.FaceDetectorYN`). Its
+  model, `publisher/models/face_detection_yunet_2023mar.onnx` (opencv_zoo, MIT),
+  ships with this repository, so run the programs from a checkout of it.
 - A local Ollama with a vision model (default `moondream`), reachable at
   `http://localhost:11434`, for config B and for realistic mock answers.
   For example:

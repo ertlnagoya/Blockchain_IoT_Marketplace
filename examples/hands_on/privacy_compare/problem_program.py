@@ -30,6 +30,8 @@ import uuid
 from pathlib import Path
 
 PROMPT = "Describe this image in detail."
+# YuNet face detector (opencv_zoo, MIT) shipped with the course repository.
+FACE_MODEL = Path(__file__).resolve().parents[3] / "publisher" / "models" / "face_detection_yunet_2023mar.onnx"
 TEXT_PROMPT = (
     "The following JSON is a privacy-preserving summary of one camera "
     "frame (counts and region types only, no pixels). In two sentences, "
@@ -58,14 +60,23 @@ def get_frame(image: str | None, camera_index: int, out_dir: Path) -> bytes:
 
 # ------------------------------------------------------------ C: redaction
 def redact_faces(jpeg: bytes) -> tuple[bytes, int]:
-    """Blur every face found by OpenCV's Haar cascade. Returns (jpeg, faces)."""
+    """Blur every face found by OpenCV's YuNet detector. Returns (jpeg, faces)."""
     import cv2
     import numpy as np
 
+    if not FACE_MODEL.exists():
+        raise SystemExit(f"Face detector model not found: {FACE_MODEL} (run from the course repository).")
     img = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+    height, width = img.shape[:2]
+    detector = cv2.FaceDetectorYN.create(str(FACE_MODEL), "", (width, height), 0.9, 0.3, 5000)
+    _, found = detector.detect(img)
+    faces = []
+    for row in [] if found is None else found:  # x, y, w, h, 5 landmarks, score
+        # the box may start outside the frame; clip it so slicing works
+        x0, y0 = max(0, int(row[0])), max(0, int(row[1]))
+        x1, y1 = min(width, int(row[0] + row[2])), min(height, int(row[1] + row[3]))
+        if x1 > x0 and y1 > y0:
+            faces.append((x0, y0, x1 - x0, y1 - y0))
     for (x, y, w, h) in faces:
         # TODO 1: blur the face region img[y:y+h, x:x+w] in place.
         #   Hint: cv2.GaussianBlur(region, (99, 99), 30) returns a blurred copy.

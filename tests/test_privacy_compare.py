@@ -64,3 +64,20 @@ def test_text_only_config_sends_no_image(tmp_path):
     }
     for leaked in ("alice", "bbox", "f-1"):
         assert leaked not in record["text"]
+
+
+def test_redact_faces_blurs_the_face_found_by_yunet():
+    """Config C: the reference redact_faces() finds the drawn face with YuNet
+    and blurs it so the detector no longer finds it."""
+    import pytest
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    from test_face_detector import _drawn_face
+
+    answer = _load("answer_program")
+    ok, buf = cv2.imencode(".jpg", _drawn_face())
+    blurred, faces = answer.redact_faces(buf.tobytes())
+    assert faces == 1
+    again, faces_after = answer.redact_faces(blurred)
+    assert faces_after == 0
