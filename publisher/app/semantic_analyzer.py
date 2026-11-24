@@ -14,7 +14,8 @@ Backends shipped here:
   face + an unknown-sensitive region so the fail-closed branches all
   get exercised.
 
-* ``VisionSemanticAnalyzer`` -- OpenCV Haar cascade for faces, plus
+* ``VisionSemanticAnalyzer`` -- OpenCV face detector (YuNet by default,
+  see face_detector.py) for faces, plus
   some lightweight heuristics for text-heavy regions (rectangular
   high-contrast blobs become ``unknown_sensitive`` -- we cannot tell
   whiteboard from screen from poster from this signal alone, and the
@@ -108,7 +109,10 @@ class SemanticAnalyzer(abc.ABC):
         """
         backend = (getattr(settings, "semantic_analyzer_backend", "") or "").lower()
         if backend in ("vision", "opencv"):
-            return VisionSemanticAnalyzer()
+            return VisionSemanticAnalyzer(
+                face_detector=getattr(settings, "face_detector", "yunet"),
+                face_detector_model_path=getattr(settings, "face_detector_model_path", "") or None,
+            )
         # default for empty / "stub" / "mock" / unrecognised
         return MockSemanticAnalyzer()
 
@@ -175,7 +179,7 @@ class MockSemanticAnalyzer(SemanticAnalyzer):
 
 
 class VisionSemanticAnalyzer(SemanticAnalyzer):
-    """OpenCV Haar-cascade face detector + a coarse text-region
+    """OpenCV face detector (YuNet or Haar) + a coarse text-region
     heuristic. The MVP stand-in for an Apple Vision / Core ML / VLM
     backend. Always conservative: any high-contrast rectangular blob
     becomes ``unknown_sensitive`` rather than ``screen``/``whiteboard``,
@@ -183,7 +187,19 @@ class VisionSemanticAnalyzer(SemanticAnalyzer):
     and below.
     """
 
-    name = "vision-opencv/v1"
+    def __init__(
+        self,
+        *,
+        face_detector: str = "yunet",
+        face_detector_model_path: str | None = None,
+    ) -> None:
+        self.face_detector = face_detector or "yunet"
+        self.face_detector_model_path = face_detector_model_path
+        # v1 = Haar cascade (the original analyzer); v2 = YuNet, which
+        # reports a real confidence per face.
+        self.name = (
+            "vision-opencv/v1" if self.face_detector == "haar" else "vision-opencv/v2-yunet"
+        )
 
     def analyze(
         self, *, image_bytes: bytes, source_device_id: str
@@ -210,28 +226,28 @@ class VisionSemanticAnalyzer(SemanticAnalyzer):
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
             # ------------- face detection ----------------
-            from pathlib import Path
+            from publisher.app.face_detector import FaceDetectorError, get_face_detector
 
-            cascade_path = (
-                Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
-            )
-            cascade = cv2.CascadeClassifier(str(cascade_path))
-            face_rects = cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
-            )
+            try:
+                detector = get_face_detector(
+                    self.face_detector, self.face_detector_model_path
+                )
+            except FaceDetectorError as exc:
+                raise SemanticAnalyzerError(str(exc)) from exc
+            face_rects = detector.detect(img)
 
             sensitive_regions: list[SensitiveRegion] = []
             objects: list[DetectedObject] = []
-            for (x, y, fw, fh) in face_rects:
+            for (x, y, fw, fh, score) in face_rects:
                 bbox = BoundingBox(
                     x=x / w, y=y / h, width=fw / w, height=fh / h
                 ).clamped()
                 sensitive_regions.append(
                     SensitiveRegion(
                         type=SensitiveRegionType.FACE,
-                        confidence=0.85,  # Haar cascades don't return a real prob
+                        confidence=min(1.0, round(float(score), 3)),
                         bbox=bbox,
-                        reason="OpenCV Haar cascade frontal-face detection",
+                        reason=f"OpenCV {detector.name} face detection",
                     )
                 )
                 # Each detected face implies a person; emit a person bbox

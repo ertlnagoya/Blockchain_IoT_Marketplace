@@ -458,8 +458,8 @@ def test_image_redactor_opencv_round_trip(monkeypatch):
 
     monkeypatch.setattr(ir_mod.httpx, "Client", _Client)
 
-    def fake_blur(image_bytes, *, ext):
-        blur_calls.append({"len": len(image_bytes), "ext": ext})
+    def fake_blur(image_bytes, *, ext, detector, model_path):
+        blur_calls.append({"len": len(image_bytes), "ext": ext, "detector": detector})
         return b"fake-blurred-bytes"
 
     monkeypatch.setattr(ir_mod, "_opencv_blur_faces", fake_blur)
@@ -471,7 +471,7 @@ def test_image_redactor_opencv_round_trip(monkeypatch):
     )
 
     assert fetch_calls == ["http://publisher/media/abc.jpg"]
-    assert blur_calls == [{"len": len(b"fake-source-bytes"), "ext": ".jpg"}]
+    assert blur_calls == [{"len": len(b"fake-source-bytes"), "ext": ".jpg", "detector": "yunet"}]
     assert len(upload_calls) == 1
     assert upload_calls[0]["endpoint"].endswith("/media/upload")
     assert out["image_url_redacted"] == "http://publisher/media/redactedhash.jpg"

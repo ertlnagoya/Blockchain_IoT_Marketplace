@@ -86,9 +86,9 @@ def capture_image(args: argparse.Namespace) -> Image.Image:
 def dummy_scene():
     """A park scene with a drawn person and a bottle on the grass.
 
-    The face is drawn so that the publisher's face detector (OpenCV Haar
-    cascade) finds it, which makes the Tier 2 blur visible in the P1/P2
-    flow. It carries no camera ID in its pixels.
+    The face is drawn so that the publisher's face detector (YuNet by
+    default, or the Haar cascade) finds it, which makes the Tier 2 blur
+    visible in the P1/P2 flow. It carries no camera ID in its pixels.
     """
     img = Image.new("RGB", (640, 480), (170, 205, 235))  # sky
     d = ImageDraw.Draw(img)

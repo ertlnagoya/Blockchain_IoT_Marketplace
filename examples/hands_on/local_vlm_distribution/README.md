@@ -130,7 +130,7 @@ Pick one and implement it yourself (no template):
 Shipped backends live in `publisher/app/semantic_analyzer.py`:
 
 - `mock` / `stub` — deterministic SIR, no dependencies (the default)
-- `vision` / `opencv` — OpenCV Haar-cascade faces + simple heuristics
+- `vision` / `opencv` — OpenCV faces (YuNet by default; `FACE_DETECTOR=haar` for the former Haar cascade) + simple heuristics
 
 Adding your own (a different detector, a real VLM, an Apple Vision bridge, …) is
 the intended extension point. You implement one method and register one branch.
