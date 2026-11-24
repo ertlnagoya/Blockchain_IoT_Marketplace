@@ -93,7 +93,7 @@ class DisclosurePolicy:
     trust_level: ViewerTrustLevel
     allowed_outputs: frozenset[OutputKind]
     mask_regions: tuple[SensitiveRegion, ...]
-    blur_strength: int = 51
+    blur_strength: int = 51  # minimum kernel; grows with the region width (blur_util)
     audit_required: bool = False
     rationale: str = ""
 

@@ -15,8 +15,10 @@ Outputs the renderer can produce, parameterised by the policy's
 * ``eventList``          -- structured events from the SIR. Mirror of
                             textSummary as JSON instead of prose.
 * ``redactedImage``      -- bytes of the source frame with the policy's
-                            mask_regions Gaussian-blurred at the
-                            policy's blur_strength. Returns None if
+                            mask_regions Gaussian-blurred with a
+                            kernel of at least the policy's
+                            blur_strength, grown to the region
+                            width (blur_util). Returns None if
                             cv2 isn't available -- the route should
                             then fall back to textSummary.
 * ``lowResolutionImage`` -- like redactedImage but downsampled to a
@@ -48,6 +50,7 @@ from publisher.app.sir_models import (
     ViewerTrustLevel,
 )
 from publisher.app.trust_policy import DisclosurePolicy, OutputKind
+from publisher.app.blur_util import blur_region
 
 
 logger = logging.getLogger(__name__)
@@ -247,10 +250,9 @@ class TrustAwareRenderer:
                 return None, None
             h, w = img.shape[:2]
 
-            # Apply a Gaussian blur to each masked region. We round
-            # the kernel size up to the nearest odd number because cv2
-            # rejects even kernels.
-            ksize = blur_kernel if blur_kernel % 2 == 1 else blur_kernel + 1
+            # Apply a Gaussian blur to each masked region. blur_kernel
+            # is the minimum kernel; it grows with the region width so
+            # that large faces are not left recognisable (blur_util).
             for r in regions:
                 bbox = r.bbox.clamped()
                 x = int(bbox.x * w)
@@ -262,7 +264,7 @@ class TrustAwareRenderer:
                 roi = img[y : y + rh, x : x + rw]
                 if roi.size == 0:
                     continue
-                img[y : y + rh, x : x + rw] = cv2.GaussianBlur(roi, (ksize, ksize), 0)
+                img[y : y + rh, x : x + rw] = blur_region(roi, blur_kernel)
 
             if downsample_to and w > downsample_to:
                 scale = downsample_to / w

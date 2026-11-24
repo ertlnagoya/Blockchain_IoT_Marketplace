@@ -38,15 +38,16 @@ from pathlib import Path
 
 import httpx
 
+from publisher.app.blur_util import DEFAULT_MIN_KSIZE, blur_region
+
 
 logger = logging.getLogger(__name__)
 
 
-# Default Gaussian kernel size for the blur. Odd numbers only
-# (OpenCV requirement). 51 is empirically heavy enough that a
-# downstream face detector won't re-identify the subject from the
-# blurred output.
-_BLUR_KSIZE = (51, 51)
+# Minimum Gaussian kernel size for the blur. The kernel grows with the
+# face width (see blur_util): a fixed 51x51 kernel left faces wider than
+# ~100 px recognisable (SFace rank-1 37.8% at 131 px, 80.6% at 192 px).
+_BLUR_MIN_KSIZE = DEFAULT_MIN_KSIZE
 
 
 class RedactionError(Exception):
@@ -124,7 +125,7 @@ def _opencv_blur_faces(image_bytes: bytes, *, ext: str) -> bytes:
     )
     for (x, y, w, h) in faces:
         roi = img[y : y + h, x : x + w]
-        img[y : y + h, x : x + w] = cv2.GaussianBlur(roi, _BLUR_KSIZE, 0)
+        img[y : y + h, x : x + w] = blur_region(roi, _BLUR_MIN_KSIZE)
 
     # Re-encode with the original extension. JPEG quality 90 keeps
     # the file small without obvious artefacts.
