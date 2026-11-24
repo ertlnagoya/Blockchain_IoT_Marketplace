@@ -69,8 +69,9 @@ class OutputKind(str, enum.Enum):
 
 # Confidence below which a sensitive-region flag still triggers a mask.
 # Spec calls this out as "fail-closed": a low-confidence text region
-# must still hide. Set deliberately loose so a Haar cascade's typical
-# 0.7-ish confidence still trips masking at medium.
+# must still hide. Set deliberately loose so any detection trips
+# masking at medium, whatever confidence the detector reports (the
+# Haar path reports a fixed 0.85; YuNet keeps faces scoring >= 0.9).
 _MASK_CONFIDENCE_FLOOR = 0.0
 
 # privacy_risk_score above which medium-tier viewers also lose the

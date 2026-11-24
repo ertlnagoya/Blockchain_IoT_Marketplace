@@ -80,8 +80,17 @@ class Settings(BaseSettings):
 
     # Image redaction: independent of VLM (face blur doesn't need a
     # multimodal model). Empty string = disabled. "stub" = passthrough
-    # marker for tests. "opencv" = real Haar-cascade face blur (Δ3).
+    # marker for tests. "opencv" = real face blur (Δ3) with the detector
+    # chosen by face_detector below.
     image_redaction_backend: str = ""
+
+    # Face detector used by the opencv redactor and the vision analyzer.
+    #   "yunet" -> OpenCV FaceDetectorYN with the vendored
+    #              publisher/models/face_detection_yunet_2023mar.onnx (default)
+    #   "haar"  -> the former frontal-face Haar cascade (OpenCV 4 only)
+    # face_detector_model_path overrides the YuNet model file.
+    face_detector: str = "yunet"
+    face_detector_model_path: str = ""
 
     # Stage T+ (semantic-tier pipeline). Selects which
     # SemanticAnalyzer backend services /semantic/analyze. The
@@ -90,7 +99,7 @@ class Settings(BaseSettings):
     # renderer consumes. Backends:
     #   ""       -> mock (deterministic stub; test/dev default)
     #   "stub"   -> alias of mock
-    #   "vision" -> OpenCV Haar cascade + MSER heuristic
+    #   "vision" -> face_detector (YuNet by default) + MSER heuristic
     #               (requires opencv-python-headless)
     # Apple Vision / Core ML / external VLM backends would slot in
     # here without changes to /semantic/* call sites.

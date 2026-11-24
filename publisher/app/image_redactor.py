@@ -7,9 +7,9 @@ Backends:
   without OpenCV. The marker makes it obvious in /platform/data that
   the receiver is looking at a placeholder, not a real blur.
 
-* ``opencv`` -- runs Haar-cascade face detection + Gaussian blur on
-  the source image bytes. The blurred result is POSTed back to
-  /media/upload (which dedups on sha256 and optionally pushes to
+* ``opencv`` -- runs face detection (YuNet by default, see
+  face_detector.py) + Gaussian blur on the source image bytes. The
+  blurred result is POSTed back to /media/upload (which dedups on sha256 and optionally pushes to
   IPFS), so the redacted image gets the same delivery surface as the
   originals: receivers fetch via /media/<sha>.<ext> regardless of
   which tier they're on.
@@ -34,11 +34,11 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 
 import httpx
 
 from publisher.app.blur_util import DEFAULT_MIN_KSIZE, blur_region
+from publisher.app.face_detector import FaceDetectorError, get_face_detector
 
 
 logger = logging.getLogger(__name__)
@@ -78,15 +78,20 @@ def _media_upload_endpoint(image_url: str) -> str:
     return image_url.rsplit("/media/", 1)[0] + "/media/upload"
 
 
-def _opencv_blur_faces(image_bytes: bytes, *, ext: str) -> bytes:
-    """Detect faces with a Haar cascade and Gaussian-blur each face
-    region, returning the re-encoded image bytes.
+def _opencv_blur_faces(
+    image_bytes: bytes,
+    *,
+    ext: str,
+    detector: str = "yunet",
+    model_path: str | None = None,
+) -> bytes:
+    """Detect faces (``detector``: ``yunet`` or ``haar``) and
+    Gaussian-blur each face region, returning the re-encoded image bytes.
 
     `ext` is the original file extension (e.g. `.jpg`, `.png`); we
     re-encode to the same format so downstream callers don't have to
-    rewrite content_type. The MVP cascade only catches frontal faces
-    -- profile / occluded / low-resolution faces will pass through.
-    Documented as a future-work item in the spec.
+    rewrite content_type. Faces the detector misses pass through; see
+    face_detector.py for how often that happens with each backend.
     """
     try:
         import cv2  # type: ignore[import-not-found]
@@ -107,23 +112,15 @@ def _opencv_blur_faces(image_bytes: bytes, *, ext: str) -> bytes:
             f"opencv could not decode image (ext={ext}, bytes={len(image_bytes)})"
         )
 
-    cascade_path = (
-        Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
-    )
-    if not cascade_path.exists():
-        raise RedactionError(
-            f"haar cascade not found at {cascade_path}; reinstall opencv"
-        )
-    cascade = cv2.CascadeClassifier(str(cascade_path))
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = cascade.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
-    )
+    try:
+        faces = get_face_detector(detector, model_path).detect(img)
+    except FaceDetectorError as exc:
+        raise RedactionError(str(exc)) from exc
     logger.info(
-        "opencv_blur_faces detected=%d shape=%s",
-        len(faces), img.shape,
+        "opencv_blur_faces detector=%s detected=%d shape=%s",
+        detector, len(faces), img.shape,
     )
-    for (x, y, w, h) in faces:
+    for (x, y, w, h, _score) in faces:
         roi = img[y : y + h, x : x + w]
         img[y : y + h, x : x + w] = blur_region(roi, _BLUR_MIN_KSIZE)
 
@@ -168,15 +165,29 @@ class ImageRedactor:
     on ``if image_redactor is not None``.
     """
 
-    def __init__(self, *, backend: str, provenance=None) -> None:
+    def __init__(
+        self,
+        *,
+        backend: str,
+        provenance=None,
+        face_detector: str = "yunet",
+        face_detector_model_path: str | None = None,
+    ) -> None:
         self.backend = backend
         self.provenance = provenance
+        self.face_detector = face_detector
+        self.face_detector_model_path = face_detector_model_path
 
     @classmethod
     def from_settings(cls, settings, provenance=None) -> "ImageRedactor | None":
         if not settings.image_redaction_backend:
             return None
-        return cls(backend=settings.image_redaction_backend, provenance=provenance)
+        return cls(
+            backend=settings.image_redaction_backend,
+            provenance=provenance,
+            face_detector=getattr(settings, "face_detector", "yunet"),
+            face_detector_model_path=getattr(settings, "face_detector_model_path", "") or None,
+        )
 
     def blur_pii(self, *, image_url: str, content_type: str) -> dict:
         """Return ``{image_url_redacted, image_cid_redacted}`` (the
@@ -222,7 +233,12 @@ class ImageRedactor:
         path = image_url.split("?", 1)[0]
         ext = os.path.splitext(path)[1] or ".jpg"
 
-        blurred = _opencv_blur_faces(source_bytes, ext=ext)
+        blurred = _opencv_blur_faces(
+            source_bytes,
+            ext=ext,
+            detector=self.face_detector,
+            model_path=self.face_detector_model_path,
+        )
         derivation_failed = False
         if self.provenance is not None and self.provenance.can_sign:
             source_c2pa = self.provenance.verify(source_bytes, content_type)

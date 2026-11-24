@@ -227,7 +227,7 @@ def test_redactor_signs_the_blur_before_upload(client, capture, monkeypatch):
     tc, pm = client
     from publisher.app import image_redactor as ir
 
-    monkeypatch.setattr(ir, "_opencv_blur_faces", lambda b, ext: _jpeg(
+    monkeypatch.setattr(ir, "_opencv_blur_faces", lambda b, ext, **_: _jpeg(
         PIL_Image.open(io.BytesIO(b)).convert("RGB").filter(ImageFilter.GaussianBlur(4))))
 
     class _Resp:
